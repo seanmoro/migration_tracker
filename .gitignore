@@ -1,0 +1,52 @@
+# Configuration files with sensitive data
+tracker.yaml
+
+# Logs
+log/
+*.log
+
+# Backup files
+backup_*.sql
+backup_*/
+
+# Environment files
+.env
+.env.local
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+
+# Java/Maven build artifacts
+backend/target/
+*.class
+*.jar
+!lib/*.jar
+
+# Node.js
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/package-lock.json
+
+# Database (keep structure, ignore data)
+# Uncomment to ignore database file
+# resources/database/migrations.db
+
+# Java bundled runtime (if included)
+resources/java/
+
+# Compiled files
+*.pyc
+__pycache__/
