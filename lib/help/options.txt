@@ -1,0 +1,144 @@
+MIGRATION-TRACKER(1)                                  User Commands                                  MIGRATION-TRACKER(1)
+
+NAME
+       migration_tracker - Manage and monitor Spectra Logic data migrations with tracking and forecasting
+
+SYNOPSIS
+       Linux:
+           migration_tracker [COMMAND] [OPTIONS]
+
+       Windows:
+           migration_tracker.bat [COMMAND] [OPTIONS]
+
+DESCRIPTION
+       Migration Tracker is a script to simplify the management and monitoring of Spectra Logic data migrations.
+       It tracks the number of objects being migrated and reports statistics on each phase of the migration, 
+       providing valuable information for forecasting.
+
+       Migration Tracker projects are created in the following order:
+
+           1.) Create the customer
+           2.) Create the project
+           3.) Create the phase
+
+       When creating a project (especially a phase), the customer's database must be loaded so reference data can be 
+       gathered. Each phaseould be defined up front. For example, if migrating five buckets, each bucket (phase) 
+      ould be pre-configured to allow global forecasts based on partial data.
+
+       At the start of each phase, upload a fr database and run the `gather-data` command with the date from the 
+       database file name. This will serve as a baseline to improve forecasting accuracy.
+
+       If multiple data points exist for a migration, `gather-data` will generate:
+         • A report since the last data point
+         • A report covering the entire phase
+
+COMMANDS
+       create-customer
+              Create a new customer for a project.
+              Requires: --name
+
+       create-project
+              Create a new project for a customer.
+              Requires: --project, --company, --type [IOM_BUCKET | IOM_EXCLUSION | RIO_CRUISE_DIVA | RIO_CRUISE_SGL | RIO_CRUISE_OTHER]
+
+       create-phase
+              Create a new phase of a project.
+              Requires: --phase,
+                        --project,
+                        --type [IOM_BUCKET | IOM_EXCLUSION | RIO_CRUISE], 
+                        --source [{storage_domain_name} | {broker_name}], 
+                        --target [{storage_domain_name} | {broker_name}]
+
+              Notes:
+                - In RIO_CRUISE, the phase name does not matter.
+                - In IOM_BUCKET, the phase must begin with the bucket name (case-sensitive).
+                - For multi-copy IOM_BUCKETs, track each as a separate phase (e.g. "my-bucket: second copy").
+                - Use --tape-partition to track tape usage; requires a BlackPearl DB even for RIO_CRUISE.
+
+       gather-data
+              Gather migration stats from a provided database and generate reports.
+              Requires: --project, --phase, --date
+              Notes:
+                - For IOM multi-copy projects, using just the bucket name will aggregate across all sub-phases.
+
+       list-buckets
+              List all buckets in the loaded BlackPearl database.
+
+       list-customers
+              List all customers currently configured.
+
+       list-projects
+              List all configured projects.
+
+       list-project-phases
+              List phases for a project.
+              Requires: --project
+
+       report-progress-latest
+              Generate a report for the most recent migration data.
+              Requires: --project, --phase
+
+       report-progress-phase
+              Generate a full-to-date report for a migration phase.
+              Requires: --project, --phase
+
+       search-customers
+              Search customers by partial name match.
+              Requires: --name
+
+       search-projects
+              Search projects by partial name match.
+              Requires: --project
+
+       search-project-phases
+              Search project phases by partial phase name.
+              Requires: --project, --phase
+
+       unpack-database
+              Unpack a database and prep it for analysis.
+              Requires: --file [path/to/backup], --type [blackpearl | rio]
+
+EXAMPLES
+       Create a new customer:
+
+           migration_tracker create-customer --name BigDataCo
+
+       Create a new project for IOM_BUCKET migration:
+
+           migration_tracker create-project --project DeepDive --company BigDataCo --type IOM_BUCKET
+
+       Create a phase with tape partition tracking:
+
+           migration_tracker create-phase --project DeepDive --phase logs-archive --type IOM_BUCKET \
+               --source hot-storage --target tape-vault --tape-partition TAPE-01
+
+       Gather data from a new DB file dated 2024-10-05:
+
+           migration_tracker gather-data --project DeepDive --phase logs-archive --date 2024-10-05
+
+       Generate a report for a phase:
+
+           migration_tracker report-progress-phase --project DeepDive --phase logs-archive
+
+       Search customers with name containing “data”:
+
+           migration_tracker search-customers --name data
+
+PLATFORM-SPECIFIC NOTES
+       - Linux: Use the script without an extension and ensure the script is executable (chmod +x).
+       - Windows: Use `.bat` from a command prompt. Administrator mode may be required for file access.
+       - Path separators:
+           • Linux/macOS: `/path/to/db`
+           • Windows: `C:\path\to\db`
+
+AUTHOR
+       Written by Sean Snyder.
+
+COPYRIGHT
+       Copyright © 2025 Spectra Logic Corporation.
+
+REPORTING BUGS
+       Report bugs to <seans@spectralogic.com>
+
+                                                                                                        etruyj
+
