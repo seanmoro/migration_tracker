@@ -1,0 +1,40 @@
+spring:
+  application:
+    name: migration-tracker-api
+  
+  datasource:
+    # Database path will be resolved in DatabaseConfig.java
+    # This is a placeholder - actual path resolution happens in code
+    url: jdbc:sqlite:../resources/database/migrations.db
+    driver-class-name: org.sqlite.JDBC
+    
+  jdbc:
+    template:
+      query-timeout: 30
+
+  sql:
+    init:
+      mode: always
+      data-locations: classpath:data.sql
+      continue-on-error: true
+
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  level:
+    com.spectralogic.migrationtracker: DEBUG
+    org.springframework.web: INFO
+    org.springframework.jdbc: DEBUG
+  file:
+    name: ../log/migration_tracker_api.log
+  pattern:
+    file: "%d{yyyy-MM-dd HH:mm:ss} %-5level %logger{36} - %msg%n"
