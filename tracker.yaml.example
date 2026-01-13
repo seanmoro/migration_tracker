@@ -1,0 +1,24 @@
+# Migration Tracker Configuration
+# Copy this file to tracker.yaml and update with your settings
+# For security, use environment variables for passwords
+
+databaseInfo:
+    blackpearl:
+        location: "/mnt/hdd0/postgres/tracker/bp/"
+        version: "14"
+        username: "${MT_BLACKPEARL_USERNAME:-postgres}"
+        password: "${MT_BLACKPEARL_PASSWORD}"  # Set via environment variable
+    rio:
+        location: "/mnt/hdd0/postgres/tracker/rio/"
+        version: "16"
+        username: "${MT_RIO_USERNAME:-postgres}"
+        password: "${MT_RIO_PASSWORD}"  # Set via environment variable
+    tracker:
+        location: "../resources/database/migrations.db"
+
+# Environment Variables:
+# MT_BLACKPEARL_PASSWORD - Password for BlackPearl database
+# MT_RIO_PASSWORD - Password for Rio database
+# MT_BLACKPEARL_USERNAME - Username for BlackPearl (default: postgres)
+# MT_RIO_USERNAME - Username for Rio (default: postgres)
+# JAVA_PATH - Custom Java path (optional)

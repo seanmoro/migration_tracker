@@ -1,0 +1,122 @@
+#!/bin/bash
+
+backupDatabase() {
+    local db_name=$1
+    local backup_file="backup_${db_name}_$(date +%Y%m%d_%H%M%S).sql"
+    echo "Creating backup: $backup_file"
+    sudo -u postgres pg_dump "$db_name" > "$backup_file" 2>/dev/null || {
+        echo "Warning: Could not create backup for $db_name" >&2
+    }
+    echo "Backup created: $backup_file"
+}
+
+clearDatabase() {
+    local db_version=$1
+    local db_name=$2
+    
+    # Create backup before destructive operation
+    backupDatabase "$db_name"
+    
+    echo "Clearing database: $db_name"
+    sudo -u postgres psql --cluster "$db_version"/main -c "DROP DATABASE IF EXISTS $db_name"
+    sudo -u postgres psql --cluster "$db_version"/main -c "CREATE DATABASE $db_name"
+}
+
+clearDirectory() {
+    local dir_path=$1
+    
+    # Verify directory exists before attempting to remove
+    if [ ! -d "$dir_path" ]; then
+        echo "Warning: Directory $dir_path does not exist, creating it" >&2
+        sudo mkdir -p "$dir_path"
+        return 0
+    fi
+    
+    # Create backup of directory if it contains data
+    if [ "$(ls -A "$dir_path" 2>/dev/null)" ]; then
+        local backup_dir="backup_$(basename "$dir_path")_$(date +%Y%m%d_%H%M%S)"
+        echo "Creating backup: $backup_dir"
+        sudo cp -r "$dir_path" "$backup_dir" 2>/dev/null || {
+            echo "Warning: Could not create backup for $dir_path" >&2
+        }
+    fi
+    
+    sudo rm -rf "$dir_path"
+    sudo mkdir -p "$dir_path"
+}
+
+prepBlackPearlDatabase() {
+   # Primary function for unpacking a BlackPearl database
+   # 1: file path
+   # 2: database location
+   # 3: version
+   # 4: username
+   # 5: password
+   updatePsqlConf "$2" "$3"
+   clearDirectory "$2"
+   unpackDatabase "$1" "$2"
+   reloadPostgres
+   setPassword "$3" "$4" "$5"
+}
+
+prepRioDatabase() {
+    # Primary function for unpacking the Rio database
+    # 1: file_path
+    # 2: database name
+    # 3: db version
+    # 4: username
+    # 5: password
+    
+    # Clear the database, upload the .dump, ensure the password is correctly set
+    local db_name="${2:-rio_db}"  # Use parameter or default to rio_db
+    clearDatabase "$3" "$db_name"
+    uploadRioDatabase "$db_name" "$1"
+    setPassword "$3" "$4" "$5"
+}
+
+reloadPostgres() {
+    # BlackPearl db only
+    echo "Restart PostgreSQL service"
+    sudo service postgresql restart
+}
+
+setPassword() {
+    echo "Resetting psql user password."
+    sudo -u postgres psql --cluster "$1"/main -c "ALTER USER ${2} with password '${3}'"
+}
+
+updatePsqlConf() {
+    conf_file=$(cat "../resources/files/postgresql.conf")
+    conf_file=$(echo "$conf_file" | sed "s|{{data_directory}}|$1|g")
+    echo "$conf_file" | sudo tee /etc/postgresql/"$2"/main/postgresql.conf > /dev/null
+}
+
+uploadRioDatabase() {
+    echo "Uploading database from backup file to database: $1"
+    # Fixed: -d is database name, $2 is input file (not -f which expects output file)
+    sudo pg_restore -d "$1" "$2"
+}
+
+unpackDatabase() {
+    sudo tar xvf "$1" -C "$2"
+}
+
+
+db_type="$1"
+db_file="$2"
+db_path="$3"
+db_version="$4"
+db_user="$5"
+db_pass="$6"
+
+if [ "$db_type" = "blackpearl" ]; then
+    echo "Prepping BlackPearl database"
+    prepBlackPearlDatabase "$db_file" "$db_path" "$db_version" "$db_user" "$db_pass"
+    echo "Finished prepping BlackPearl database"
+elif [ "$db_type" = "rio" ]; then
+    echo "Prepping Rio database"
+    prepRioDatabase "$db_file" "rio_db" "$db_version" "$db_user" "$db_pass"
+    echo "Finished prepping Rio database."
+else
+    echo "Unable to handle database type [$db_type]"
+fi

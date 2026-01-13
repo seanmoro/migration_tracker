@@ -1,0 +1,160 @@
+#!/bin/bash
+
+# Source utility functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/utils.sh" 2>/dev/null || {
+    echo "Warning: Could not load utils.sh, some features may not work" >&2
+}
+
+# Determine Java path based on OS
+if [ "$(uname)" == "Linux" ]; then
+    java_path="${JAVA_PATH:-../resources/java/linux/amazon-corretto-21.0.4.7.1-linux-x64/bin/java}"
+else
+    java_path="${JAVA_PATH:-/usr/bin/java}"
+fi
+
+runJava() {
+    validateJava "$java_path"
+    log "Running Java application with arguments: $*"
+    $java_path -jar ../lib/migration-tracker*.jar "$@"
+}
+
+runUnpackDatabase() {
+    # Load the configuration information for the unpack database command.
+    # First parse to see if there is a valid config type.
+    
+    validateConfig
+    
+    if [ "$db_type" = "blackpearl" ] || [ "$db_type" = "rio" ]; then
+        # Try to use Python YAML parser first
+        if command -v python3 &> /dev/null; then
+            location=$(getYamlValue "../tracker.yaml" "databaseInfo.$db_type.location")
+            version=$(getYamlValue "../tracker.yaml" "databaseInfo.$db_type.version")
+            username=$(getYamlValue "../tracker.yaml" "databaseInfo.$db_type.username" "postgres")
+            password=$(getYamlValue "../tracker.yaml" "databaseInfo.$db_type.password")
+            
+            # Support environment variable substitution
+            if [[ "$username" == \$\{* ]]; then
+                username=$(eval echo "$username")
+            fi
+            if [[ "$password" == \$\{* ]]; then
+                password=$(eval echo "$password")
+            fi
+            
+            # If password is empty, try environment variable
+            if [ -z "$password" ]; then
+                local env_var="MT_${db_type^^}_PASSWORD"
+                password="${!env_var}"
+                if [ -z "$password" ]; then
+                    error "Password not found in config or environment variable $env_var"
+                fi
+            fi
+        else
+            # Fallback to grep/awk method
+            warn "Python not available, using fallback YAML parsing"
+            config=$(cat ../tracker.yaml | grep -A 4 "$db_type")
+            IFS=$'\n' read -r -d '' -a lines <<< "$config"
+
+            for line in "${lines[@]}"
+            do
+                if [ -n "$(echo "$line" | grep location )" ]; then
+                    location=$(echo "$line" | awk -F'"' '{print $2}')
+                elif [ -n "$(echo "$line" | grep version )" ]; then
+                    version=$(echo "$line" | awk -F'"' '{print $2}')
+                elif [ -n "$(echo "$line" | grep username)" ]; then
+                    username=$(echo "$line" | awk -F'"' '{print $2}')
+                elif [ -n "$(echo "$line" | grep password)" ]; then
+                    password=$(echo "$line" | awk -F'"' '{print $2}')
+                fi
+            done
+        fi
+    elif [ -z "$db_type" ]; then
+        error "No database type specified. Please use --type to specify the database type."
+    else
+        error "Invalid database type specified [$db_type]. Use 'blackpearl' or 'rio'."
+    fi
+
+    # Verify a file path was specified.
+    validateFilePath "$file_path"
+    
+    log "Unpacking database: type=$db_type, file=$file_path"
+    ../resources/scripts/unpack_database "$db_type" "$file_path" "$location" "$version" "$username" "$password"
+}
+
+# Main Script
+# Check if the command is unpack database and run
+# the command from a bash script. If not, move onto
+# the java program with all the arguments.
+
+cmd=""
+file_path=""
+db_type=""
+dry_run=false
+args=()
+
+# Improved argument parsing
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --command)
+            cmd="$2"
+            shift 2
+            ;;
+        --file)
+            file_path="$2"
+            shift 2
+            ;;
+        --type)
+            db_type="$2"
+            shift 2
+            ;;
+        --dry-run)
+            dry_run=true
+            shift
+            ;;
+        *)
+            args+=("$1")
+            shift
+            ;;
+    esac
+done
+
+# Validate configuration before proceeding
+validateConfig
+
+if [ "$cmd" = "unpack-database" ]; then
+    if [ "$dry_run" = true ]; then
+        info "DRY RUN: Would unpack database"
+        info "  Type: $db_type"
+        info "  File: $file_path"
+        exit 0
+    fi
+    runUnpackDatabase
+elif [ "$cmd" = "health-check" ]; then
+    # Health check command
+    info "Running health check..."
+    
+    # Check SQLite database
+    if [ -f "../resources/database/migrations.db" ]; then
+        info "✓ SQLite database exists"
+    else
+        warn "✗ SQLite database not found"
+    fi
+    
+    # Check Java
+    if validateJava "$java_path" 2>/dev/null; then
+        info "✓ Java found at $java_path"
+    else
+        warn "✗ Java not found"
+    fi
+    
+    # Check configuration
+    if validateConfig 2>/dev/null; then
+        info "✓ Configuration file exists"
+    else
+        warn "✗ Configuration file missing"
+    fi
+    
+    info "Health check complete"
+else
+    runJava "${args[@]}"
+fi

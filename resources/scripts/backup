@@ -1,0 +1,50 @@
+#!/bin/bash
+# Backup script for Migration Tracker database
+# Usage: ./backup [backup-name]
+
+set -e  # Exit on error
+
+# Configuration with defaults
+BACKUP_BUCKET="${BACKUP_BUCKET:-sv-spectra-backups-0}"
+DB_PATH="${DB_PATH:-../resources/database/migrations.db}"
+BACKUP_NAME="${1:-migration-tracker-$(date +%Y%m%d)}"
+
+# Error handling
+error() {
+    echo "Error: $1" >&2
+    exit 1
+}
+
+info() {
+    echo "Info: $1"
+}
+
+# Validate database file exists
+if [ ! -f "$DB_PATH" ]; then
+    error "Database not found at $DB_PATH"
+fi
+
+# Check if AWS CLI is available
+if ! command -v aws &> /dev/null; then
+    error "AWS CLI not found. Please install AWS CLI to use backup functionality."
+fi
+
+# Check if AWS credentials are configured
+if ! aws sts get-caller-identity &> /dev/null; then
+    error "AWS credentials not configured. Please run 'aws configure'."
+fi
+
+info "Backing up database to S3..."
+info "  Bucket: $BACKUP_BUCKET"
+info "  Key: $BACKUP_NAME.db"
+info "  Source: $DB_PATH"
+
+# Upload to S3
+aws s3api put-object \
+    --bucket "$BACKUP_BUCKET" \
+    --key "${BACKUP_NAME}.db" \
+    --body "$DB_PATH" || {
+    error "Backup failed. Check AWS credentials and network connection."
+}
+
+info "Backup completed successfully: ${BACKUP_NAME}.db"
