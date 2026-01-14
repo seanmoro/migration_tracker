@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { phasesApi } from '../api/phases';
 import { MigrationPhase } from '../types';
 import { X } from 'lucide-react';
+import { useToastContext } from '../contexts/ToastContext';
 
 interface PhaseFormProps {
   phase?: MigrationPhase | null;
@@ -23,6 +24,7 @@ export default function PhaseForm({ phase, projectId, onClose }: PhaseFormProps)
   const [target, setTarget] = useState('');
   const [targetTapePartition, setTargetTapePartition] = useState('');
   const queryClient = useQueryClient();
+  const toast = useToastContext();
 
   useEffect(() => {
     if (phase) {
@@ -48,7 +50,11 @@ export default function PhaseForm({ phase, projectId, onClose }: PhaseFormProps)
         : phasesApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['phases'] });
+      toast.success(phase ? 'Phase updated successfully' : 'Phase created successfully');
       onClose();
+    },
+    onError: (error: any) => {
+      toast.error(`Failed to ${phase ? 'update' : 'create'} phase: ${error.message || 'Unknown error'}`);
     },
   });
 

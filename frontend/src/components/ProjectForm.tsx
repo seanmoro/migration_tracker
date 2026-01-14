@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsApi } from '../api/projects';
 import { MigrationProject, Customer } from '../types';
 import { X } from 'lucide-react';
+import { useToastContext } from '../contexts/ToastContext';
 
 interface ProjectFormProps {
   project?: MigrationProject | null;
@@ -23,6 +24,7 @@ export default function ProjectForm({ project, customers, onClose }: ProjectForm
   const [customerId, setCustomerId] = useState('');
   const [type, setType] = useState<MigrationProject['type']>('IOM_BUCKET');
   const queryClient = useQueryClient();
+  const toast = useToastContext();
 
   useEffect(() => {
     if (project) {
@@ -41,7 +43,11 @@ export default function ProjectForm({ project, customers, onClose }: ProjectForm
         : projectsApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
+      toast.success(project ? 'Project updated successfully' : 'Project created successfully');
       onClose();
+    },
+    onError: (error: any) => {
+      toast.error(`Failed to ${project ? 'update' : 'create'} project: ${error.message || 'Unknown error'}`);
     },
   });
 

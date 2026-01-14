@@ -9,7 +9,10 @@ export function formatBytes(bytes: number): string {
 }
 
 export function formatNumber(num: number): string {
-  return new Intl.NumberFormat('en-US').format(num);
+  return new Intl.NumberFormat('en-US', {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 0,
+  }).format(num);
 }
 
 export function formatDate(date: string | Date): string {

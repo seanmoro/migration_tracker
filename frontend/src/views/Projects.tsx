@@ -7,6 +7,8 @@ import { MigrationProject } from '../types';
 import { Plus, Search, FolderOpen, Edit, Trash2 } from 'lucide-react';
 import { formatDate } from '../utils/format';
 import ProjectForm from '../components/ProjectForm';
+import Breadcrumb from '../components/Breadcrumb';
+import { useToastContext } from '../contexts/ToastContext';
 
 export default function Projects() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -14,6 +16,7 @@ export default function Projects() {
   const [editingProject, setEditingProject] = useState<MigrationProject | null>(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const toast = useToastContext();
 
   const { data: projects = [], isLoading } = useQuery({
     queryKey: ['projects', searchTerm],
@@ -32,6 +35,10 @@ export default function Projects() {
     mutationFn: (id: string) => projectsApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
+      toast.success('Project deleted successfully');
+    },
+    onError: (error: any) => {
+      toast.error(`Failed to delete project: ${error.message || 'Unknown error'}`);
     },
   });
 
@@ -66,6 +73,10 @@ export default function Projects() {
 
   return (
     <div className="space-y-6">
+      <Breadcrumb items={[
+        { label: 'Dashboard', path: '/' },
+        { label: 'Projects' }
+      ]} />
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Projects</h1>

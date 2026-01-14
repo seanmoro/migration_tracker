@@ -1,16 +1,16 @@
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { reportsApi } from '../api/reports';
 import { phasesApi } from '../api/phases';
-import { ArrowLeft, Download } from 'lucide-react';
+import { projectsApi } from '../api/projects';
 import ProgressBar from '../components/ProgressBar';
 import PhaseProgressChart from '../components/PhaseProgressChart';
 import ExportButton from '../components/ExportButton';
+import Breadcrumb from '../components/Breadcrumb';
 import { formatBytes, formatNumber, formatDate } from '../utils/format';
 
 export default function PhaseProgress() {
   const { phaseId } = useParams<{ phaseId: string }>();
-  const navigate = useNavigate();
 
   const { data: phase } = useQuery({
     queryKey: ['phases', phaseId],
@@ -36,21 +36,27 @@ export default function PhaseProgress() {
     enabled: !!phaseId,
   });
 
+  const { data: project } = useQuery({
+    queryKey: ['projects', phase?.migrationId],
+    queryFn: () => projectsApi.get(phase!.migrationId),
+    enabled: !!phase?.migrationId,
+  });
+
   if (!phase) {
     return <div>Loading...</div>;
   }
 
   return (
     <div className="space-y-6">
+      <Breadcrumb items={[
+        { label: 'Dashboard', path: '/' },
+        { label: 'Projects', path: '/projects' },
+        { label: project?.name || 'Project', path: `/projects/${phase.migrationId}/phases` },
+        { label: 'Phases', path: `/projects/${phase.migrationId}/phases` },
+        { label: phase.name }
+      ]} />
       <div className="flex items-center justify-between">
         <div>
-          <button
-            onClick={() => navigate(-1)}
-            className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 mb-2"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Back</span>
-          </button>
           <h1 className="text-3xl font-bold text-gray-900">{phase.name}</h1>
           <p className="text-gray-600 mt-1">
             {phase.source} → {phase.target}
@@ -63,7 +69,7 @@ export default function PhaseProgress() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="card">
           <h3 className="text-sm font-medium text-gray-600 mb-2">Progress</h3>
-          <p className="text-3xl font-bold text-gray-900">{progress?.progress || 0}%</p>
+          <p className="text-3xl font-bold text-gray-900">{(progress?.progress || 0).toFixed(2)}%</p>
         </div>
         <div className="card">
           <h3 className="text-sm font-medium text-gray-600 mb-2">Source Objects</h3>

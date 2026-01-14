@@ -7,10 +7,32 @@ spring:
     # This is a placeholder - actual path resolution happens in code
     url: jdbc:sqlite:../resources/database/migrations.db
     driver-class-name: org.sqlite.JDBC
+
+# Migration Tracker Configuration
+# Set MIGRATION_TRACKER_DB_PATH environment variable to override database location
+migration:
+  tracker:
+    database:
+      path: ${MIGRATION_TRACKER_DB_PATH:}
     
   jdbc:
     template:
       query-timeout: 30
+
+# PostgreSQL connection settings (read from tracker.yaml or environment)
+postgres:
+  blackpearl:
+    host: ${MT_BLACKPEARL_HOST:localhost}
+    port: ${MT_BLACKPEARL_PORT:5432}
+    database: ${MT_BLACKPEARL_DATABASE:tapesystem}
+    username: ${MT_BLACKPEARL_USERNAME:postgres}
+    password: ${MT_BLACKPEARL_PASSWORD:}
+  rio:
+    host: ${MT_RIO_HOST:localhost}
+    port: ${MT_RIO_PORT:5432}
+    database: ${MT_RIO_DATABASE:rio_db}
+    username: ${MT_RIO_USERNAME:postgres}
+    password: ${MT_RIO_PASSWORD:}
 
   sql:
     init:

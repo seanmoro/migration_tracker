@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Download, FileText, FileSpreadsheet, FileJson, FileCode } from 'lucide-react';
+import { Download } from 'lucide-react';
 import { reportsApi } from '../api/reports';
 import { ExportFormat } from '../types';
 import ExportDialog from './ExportDialog';

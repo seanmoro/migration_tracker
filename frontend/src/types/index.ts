@@ -94,3 +94,10 @@ export interface ExportOptions {
   includeRawData?: boolean;
   template?: 'executive' | 'detailed' | 'minimal';
 }
+
+export interface Bucket {
+  name: string;
+  source: 'blackpearl' | 'rio';
+  objectCount: number;
+  sizeBytes: number;
+}

@@ -3,7 +3,6 @@ import {
   LayoutDashboard,
   Users,
   FolderKanban,
-  TrendingUp,
   Database,
 } from 'lucide-react';
 

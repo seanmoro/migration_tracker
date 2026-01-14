@@ -25,7 +25,7 @@ export default function ProgressBar({
         <div className="flex justify-between items-center mb-1">
           <span className="text-sm font-medium text-gray-700">{label}</span>
           {showPercentage && (
-            <span className="text-sm text-gray-600">{clampedProgress}%</span>
+            <span className="text-sm text-gray-600">{clampedProgress.toFixed(2)}%</span>
           )}
         </div>
       )}

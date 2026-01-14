@@ -1,4 +1,5 @@
 import { BarChart3 } from 'lucide-react';
+import GlobalSearch from './GlobalSearch';
 
 export default function Header() {
   return (
@@ -9,6 +10,7 @@ export default function Header() {
           <h1 className="text-xl font-bold text-gray-900 truncate">Migration Tracker</h1>
         </div>
         <div className="flex items-center space-x-4 flex-shrink-0">
+          <GlobalSearch />
           <span className="text-sm text-gray-600 whitespace-nowrap">v0.6.2</span>
         </div>
       </div>

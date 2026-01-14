@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { dashboardApi } from '../api/dashboard';
 import StatCard from '../components/StatCard';
 import ProgressChart from '../components/ProgressChart';
-import { Activity, TrendingUp, AlertCircle, Database, ArrowRight, ChevronDown, ChevronRight } from 'lucide-react';
+import Breadcrumb from '../components/Breadcrumb';
+import { Activity, TrendingUp, AlertCircle, Database, ArrowRight, ChevronDown, ChevronRight, Plus } from 'lucide-react';
 import { formatBytes, formatNumber } from '../utils/format';
 
 export default function Dashboard() {
@@ -62,9 +63,28 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-600 mt-1">Overview of all migration activities</p>
+      <Breadcrumb items={[{ label: 'Dashboard' }]} />
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+          <p className="text-gray-600 mt-1">Overview of all migration activities</p>
+        </div>
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={() => navigate('/gather-data')}
+            className="btn btn-secondary flex items-center space-x-2"
+          >
+            <Database className="w-4 h-4" />
+            <span>Gather Data</span>
+          </button>
+          <button
+            onClick={() => navigate('/customers')}
+            className="btn btn-primary flex items-center space-x-2"
+          >
+            <Plus className="w-4 h-4" />
+            <span>New Migration</span>
+          </button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -78,7 +98,7 @@ export default function Dashboard() {
             const element = document.getElementById('active-phases');
             element?.scrollIntoView({ behavior: 'smooth' });
           }}
-          clickable={stats?.activeMigrations && stats.activeMigrations > 0}
+          clickable={!!(stats?.activeMigrations && stats.activeMigrations > 0)}
         />
         <StatCard
           title="Total Objects Migrated"
@@ -87,7 +107,7 @@ export default function Dashboard() {
         />
         <StatCard
           title="Average Progress"
-          value={`${stats?.averageProgress || 0}%`}
+          value={`${(stats?.averageProgress || 0).toFixed(2)}%`}
           icon={TrendingUp}
         />
         <StatCard
@@ -99,7 +119,7 @@ export default function Dashboard() {
             const element = document.getElementById('phases-needing-attention');
             element?.scrollIntoView({ behavior: 'smooth' });
           }}
-          clickable={stats?.phasesNeedingAttention && stats.phasesNeedingAttention > 0}
+          clickable={!!(stats?.phasesNeedingAttention && stats.phasesNeedingAttention > 0)}
         />
       </div>
 
@@ -127,7 +147,7 @@ export default function Dashboard() {
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="font-medium text-gray-900">{phase.phaseName}</h3>
                   <div className="flex items-center space-x-2">
-                    <span className="text-sm font-semibold text-red-600">{phase.progress}%</span>
+                    <span className="text-sm font-semibold text-red-600">{phase.progress.toFixed(2)}%</span>
                     <ArrowRight className="w-4 h-4 text-red-600" />
                   </div>
                 </div>
@@ -228,7 +248,7 @@ export default function Dashboard() {
                                         <span className={`text-sm font-semibold ${
                                           phase.progress < 50 ? 'text-red-600' : phase.progress < 80 ? 'text-yellow-600' : 'text-primary-600'
                                         }`}>
-                                          {phase.progress}%
+                                          {phase.progress.toFixed(2)}%
                                         </span>
                                         <ArrowRight className="w-4 h-4 text-gray-400" />
                                       </div>

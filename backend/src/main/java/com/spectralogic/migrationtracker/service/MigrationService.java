@@ -16,7 +16,7 @@ public class MigrationService {
         this.repository = repository;
     }
 
-    public MigrationData gatherData(String projectId, String phaseId, LocalDate date) {
+    public MigrationData gatherData(String projectId, String phaseId, LocalDate date, List<String> selectedBuckets) {
         // Validate that data doesn't already exist for this date
         List<MigrationData> existing = repository.findByPhaseId(phaseId);
         for (MigrationData data : existing) {
@@ -35,11 +35,19 @@ public class MigrationService {
         
         // TODO: Query PostgreSQL databases to get actual migration stats
         // This would require connection to BlackPearl/Rio databases
+        // If selectedBuckets is provided, filter by those buckets
         // For now, set default values
         data.setSourceObjects(0L);
         data.setTargetObjects(0L);
         data.setSourceSize(0L);
         data.setTargetSize(0L);
+        
+        // Note: When implementing actual database queries, use selectedBuckets to filter:
+        // if (selectedBuckets != null && !selectedBuckets.isEmpty()) {
+        //     // Query only selected buckets
+        // } else {
+        //     // Query all buckets
+        // }
 
         return repository.save(data);
     }

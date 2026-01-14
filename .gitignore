@@ -38,6 +38,7 @@ backend/target/
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/vite
 frontend/package-lock.json
 
 # Database (keep structure, ignore data)

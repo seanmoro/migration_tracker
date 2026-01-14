@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { customersApi } from '../api/customers';
 import { Customer } from '../types';
 import { X } from 'lucide-react';
+import { useToastContext } from '../contexts/ToastContext';
 
 interface CustomerFormProps {
   customer?: Customer | null;
@@ -12,6 +13,7 @@ interface CustomerFormProps {
 export default function CustomerForm({ customer, onClose }: CustomerFormProps) {
   const [name, setName] = useState('');
   const queryClient = useQueryClient();
+  const toast = useToastContext();
 
   useEffect(() => {
     if (customer) {
@@ -26,7 +28,11 @@ export default function CustomerForm({ customer, onClose }: CustomerFormProps) {
         : customersApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
+      toast.success(customer ? 'Customer updated successfully' : 'Customer created successfully');
       onClose();
+    },
+    onError: (error: any) => {
+      toast.error(`Failed to ${customer ? 'update' : 'create'} customer: ${error.message || 'Unknown error'}`);
     },
   });
 

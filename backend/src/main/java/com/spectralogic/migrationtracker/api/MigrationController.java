@@ -1,7 +1,9 @@
 package com.spectralogic.migrationtracker.api;
 
+import com.spectralogic.migrationtracker.api.dto.Bucket;
 import com.spectralogic.migrationtracker.api.dto.GatherDataRequest;
 import com.spectralogic.migrationtracker.model.MigrationData;
+import com.spectralogic.migrationtracker.service.BucketService;
 import com.spectralogic.migrationtracker.service.MigrationService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -14,9 +16,11 @@ import java.util.List;
 public class MigrationController {
 
     private final MigrationService service;
+    private final BucketService bucketService;
 
-    public MigrationController(MigrationService service) {
+    public MigrationController(MigrationService service, BucketService bucketService) {
         this.service = service;
+        this.bucketService = bucketService;
     }
 
     @PostMapping("/gather-data")
@@ -24,7 +28,8 @@ public class MigrationController {
         MigrationData data = service.gatherData(
             request.getProjectId(),
             request.getPhaseId(),
-            request.getDate()
+            request.getDate(),
+            request.getSelectedBuckets()
         );
         return ResponseEntity.status(HttpStatus.CREATED).body(data);
     }
@@ -32,5 +37,17 @@ public class MigrationController {
     @GetMapping("/data")
     public ResponseEntity<List<MigrationData>> getData(@RequestParam String phaseId) {
         return ResponseEntity.ok(service.getDataByPhase(phaseId));
+    }
+
+    @GetMapping("/buckets")
+    public ResponseEntity<List<Bucket>> getBuckets(
+            @RequestParam(required = false) String source) {
+        if ("blackpearl".equalsIgnoreCase(source)) {
+            return ResponseEntity.ok(bucketService.getBlackPearlBuckets());
+        } else if ("rio".equalsIgnoreCase(source)) {
+            return ResponseEntity.ok(bucketService.getRioBuckets());
+        } else {
+            return ResponseEntity.ok(bucketService.getAllBuckets());
+        }
     }
 }

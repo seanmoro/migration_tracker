@@ -5,12 +5,15 @@ import { Customer } from '../types';
 import { Plus, Search, Edit, Trash2 } from 'lucide-react';
 import { formatDate } from '../utils/format';
 import CustomerForm from '../components/CustomerForm';
+import Breadcrumb from '../components/Breadcrumb';
+import { useToastContext } from '../contexts/ToastContext';
 
 export default function Customers() {
   const [searchTerm, setSearchTerm] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const queryClient = useQueryClient();
+  const toast = useToastContext();
 
   const { data: customers = [], isLoading } = useQuery({
     queryKey: ['customers', searchTerm],
@@ -24,6 +27,10 @@ export default function Customers() {
     mutationFn: (id: string) => customersApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
+      toast.success('Customer deleted successfully');
+    },
+    onError: (error: any) => {
+      toast.error(`Failed to delete customer: ${error.message || 'Unknown error'}`);
     },
   });
 
@@ -53,6 +60,10 @@ export default function Customers() {
 
   return (
     <div className="space-y-6">
+      <Breadcrumb items={[
+        { label: 'Dashboard', path: '/' },
+        { label: 'Customers' }
+      ]} />
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Customers</h1>

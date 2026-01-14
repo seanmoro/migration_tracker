@@ -6,13 +6,36 @@ interface PhaseProgressChartProps {
   data: MigrationData[];
 }
 
+const formatTooltipValue = (value: number, name: string) => {
+  if (name.includes('Size')) {
+    // Value is already in GB
+    return [`${value.toFixed(2)} GB`, name];
+  }
+  // For objects, format as number with 2 decimals if needed
+  return [value.toLocaleString('en-US', { maximumFractionDigits: 2 }), name];
+};
+
+const formatYAxisObjects = (tickItem: number) => {
+  if (tickItem >= 1000000) {
+    return `${(tickItem / 1000000).toFixed(2)}M`;
+  }
+  if (tickItem >= 1000) {
+    return `${(tickItem / 1000).toFixed(2)}K`;
+  }
+  return tickItem.toFixed(2);
+};
+
+const formatYAxisSize = (tickItem: number) => {
+  return `${tickItem.toFixed(2)} GB`;
+};
+
 export default function PhaseProgressChart({ data }: PhaseProgressChartProps) {
   const chartData = data.map((d) => ({
     date: formatDate(d.timestamp),
     sourceObjects: d.sourceObjects,
     targetObjects: d.targetObjects,
-    sourceSize: d.sourceSize / (1024 * 1024 * 1024), // Convert to GB
-    targetSize: d.targetSize / (1024 * 1024 * 1024),
+    sourceSize: parseFloat((d.sourceSize / (1024 * 1024 * 1024)).toFixed(2)), // Convert to GB, 2 decimals
+    targetSize: parseFloat((d.targetSize / (1024 * 1024 * 1024)).toFixed(2)),
   }));
 
   return (
@@ -20,9 +43,9 @@ export default function PhaseProgressChart({ data }: PhaseProgressChartProps) {
       <LineChart data={chartData}>
         <CartesianGrid strokeDasharray="3 3" />
         <XAxis dataKey="date" />
-        <YAxis yAxisId="left" />
-        <YAxis yAxisId="right" orientation="right" />
-        <Tooltip />
+        <YAxis yAxisId="left" tickFormatter={formatYAxisObjects} />
+        <YAxis yAxisId="right" orientation="right" tickFormatter={formatYAxisSize} />
+        <Tooltip formatter={formatTooltipValue} />
         <Legend />
         <Line
           yAxisId="left"
