@@ -69,7 +69,22 @@ export default function DatabaseUpload({ onSuccess, databaseType = 'tracker' }: 
         showToast(response.error || 'Failed to restore database', 'error');
       }
     } catch (error: any) {
-      const errorMessage = error.response?.data?.error || error.message || 'Failed to restore database';
+      console.error('Upload error:', error);
+      let errorMessage = 'Failed to restore database';
+      
+      if (error.response) {
+        // Server responded with error status
+        errorMessage = error.response.data?.error || 
+                      error.response.data?.message || 
+                      `Server error: ${error.response.status} ${error.response.statusText}`;
+      } else if (error.request) {
+        // Request was made but no response received
+        errorMessage = 'Network error: No response from server. Check your connection.';
+      } else {
+        // Error in request setup
+        errorMessage = error.message || 'Failed to restore database';
+      }
+      
       showToast(errorMessage, 'error');
       setResult({
         success: false,
