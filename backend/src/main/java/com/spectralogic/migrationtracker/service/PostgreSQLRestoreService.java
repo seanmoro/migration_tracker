@@ -422,11 +422,24 @@ public class PostgreSQLRestoreService {
     /**
      * Restore from TAR archive (PostgreSQL TAR format)
      * PostgreSQL TAR format can be restored using pg_restore with -F t flag
+     * Handles both .tar and .tar.gz files
      */
     private RestoreResult restoreFromTar(String databaseType, Path tarFile, Path extractDir, DatabaseInfo dbInfo) throws IOException {
         RestoreResult result = new RestoreResult();
         result.setDatabaseType(databaseType);
-        result.setFormat("tar");
+        
+        String filename = tarFile.getFileName().toString().toLowerCase();
+        Path actualTarFile = tarFile;
+        
+        // If it's a .tar.gz, decompress it first
+        if (filename.endsWith(".tar.gz") || filename.endsWith(".tgz")) {
+            result.setFormat("tar.gz");
+            logger.info("Decompressing .tar.gz file: {}", tarFile);
+            actualTarFile = extractFromGz(tarFile, extractDir);
+            logger.info("Decompressed to: {}", actualTarFile);
+        } else {
+            result.setFormat("tar");
+        }
 
         // Build pg_restore command for TAR format
         List<String> command = new ArrayList<>();
@@ -439,7 +452,7 @@ public class PostgreSQLRestoreService {
         command.add("-v");  // Verbose
         command.add("--no-owner");  // Don't restore ownership
         command.add("--no-privileges");  // Don't restore privileges
-        command.add(tarFile.toAbsolutePath().toString());
+        command.add(actualTarFile.toAbsolutePath().toString());
 
         // Set password via environment variable
         ProcessBuilder pb = new ProcessBuilder(command);
