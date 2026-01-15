@@ -6,8 +6,8 @@ export default function DatabaseRestore() {
     <div className="space-y-6">
       <Breadcrumb
         items={[
-          { label: 'Home', href: '/' },
-          { label: 'Database Restore', href: '/database/restore' },
+          { label: 'Home', path: '/' },
+          { label: 'Database Restore' },
         ]}
       />
       <div className="bg-white rounded-lg shadow p-6">

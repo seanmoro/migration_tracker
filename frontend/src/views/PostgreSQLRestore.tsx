@@ -6,8 +6,8 @@ export default function PostgreSQLRestore() {
     <div className="space-y-6">
       <Breadcrumb
         items={[
-          { label: 'Home', href: '/' },
-          { label: 'PostgreSQL Restore', href: '/database/postgres-restore' },
+          { label: 'Home', path: '/' },
+          { label: 'PostgreSQL Restore' },
         ]}
       />
       <div className="bg-white rounded-lg shadow p-6">

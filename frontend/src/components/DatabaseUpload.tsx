@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { databaseApi, RestoreResponse } from '../api/database';
-import { useToast } from '../contexts/ToastContext';
+import { useToastContext } from '../contexts/ToastContext';
 
 interface DatabaseUploadProps {
   onSuccess?: () => void;
@@ -13,7 +13,7 @@ export default function DatabaseUpload({ onSuccess, databaseType = 'tracker' }: 
   const [result, setResult] = useState<RestoreResponse | null>(null);
   const [selectedDbType, setSelectedDbType] = useState<'blackpearl' | 'rio'>(databaseType === 'blackpearl' ? 'blackpearl' : databaseType === 'rio' ? 'rio' : 'blackpearl');
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { showToast } = useToast();
+  const { showToast } = useToastContext();
 
   const handleFile = async (file: File) => {
     // Validate file type based on database type
@@ -37,7 +37,6 @@ export default function DatabaseUpload({ onSuccess, databaseType = 'tracker' }: 
     }
 
     // Validate file size (max 2GB for PostgreSQL, 500MB for tracker)
-    const isPostgreSQL = databaseType === 'blackpearl' || databaseType === 'rio' || databaseType === 'postgres';
     const maxSize = databaseType === 'tracker' ? 500 * 1024 * 1024 : 2 * 1024 * 1024 * 1024;
     if (file.size > maxSize) {
       const maxSizeMB = databaseType === 'tracker' ? '500MB' : '2GB';
