@@ -19,9 +19,9 @@ export default function DatabaseUpload({ onSuccess, databaseType = 'tracker' }: 
     // Validate file type based on database type
     let validExtensions: string[];
     if (databaseType === 'tracker') {
-      validExtensions = ['.db', '.zip', '.tar.gz', '.tgz', '.gz', '.tar'];
+      validExtensions = ['.db', '.zip', '.tar.gz', '.tgz', '.gz', '.tar', '.zst'];
     } else {
-      validExtensions = ['.dump', '.sql', '.tar', '.tar.gz', '.tgz', '.zip', '.gz'];
+      validExtensions = ['.dump', '.sql', '.tar', '.tar.gz', '.tgz', '.zip', '.gz', '.zst'];
     }
     
     const fileName = file.name.toLowerCase();
@@ -29,8 +29,8 @@ export default function DatabaseUpload({ onSuccess, databaseType = 'tracker' }: 
 
     if (!isValid) {
       const supported = databaseType === 'tracker' 
-        ? '.db, .zip, .tar.gz, .gz, .tar'
-        : '.dump, .sql, .tar, .tar.gz, .zip';
+        ? '.db, .zip, .tar.gz, .gz, .tar, .zst'
+        : '.dump, .sql, .tar, .tar.gz, .zip, .zst';
       showToast(`Invalid file type. Supported: ${supported}`, 'error');
       return;
     }
@@ -158,8 +158,8 @@ export default function DatabaseUpload({ onSuccess, databaseType = 'tracker' }: 
             type="file"
             className="hidden"
             accept={(databaseType === 'blackpearl' || databaseType === 'rio' || databaseType === 'postgres')
-              ? ".dump,.sql,.tar,.tar.gz,.tgz,.zip,.gz"
-              : ".db,.zip,.tar.gz,.tgz,.gz,.tar"}
+              ? ".dump,.sql,.tar,.tar.gz,.tgz,.zip,.gz,.zst"
+              : ".db,.zip,.tar.gz,.tgz,.gz,.tar,.zst"}
             onChange={handleChange}
             disabled={uploading}
           />
@@ -189,8 +189,8 @@ export default function DatabaseUpload({ onSuccess, databaseType = 'tracker' }: 
               </p>
               <p className="text-sm text-gray-500">
                 {(databaseType === 'blackpearl' || databaseType === 'rio' || databaseType === 'postgres')
-                  ? 'Supported formats: .dump, .sql, .tar, .tar.gz, .zip (Max 2GB)'
-                  : 'Supported formats: .db, .zip, .tar.gz, .gz, .tar (Max 500MB)'}
+                  ? 'Supported formats: .dump, .sql, .tar, .tar.gz, .zip, .zst (Max 2GB)'
+                  : 'Supported formats: .db, .zip, .tar.gz, .gz, .tar, .zst (Max 500MB)'}
               </p>
             </div>
           )}

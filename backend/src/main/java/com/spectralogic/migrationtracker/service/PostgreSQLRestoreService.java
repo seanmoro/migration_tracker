@@ -57,7 +57,7 @@ public class PostgreSQLRestoreService {
 
     /**
      * Restore PostgreSQL database from backup file
-     * Supports: .dump, .sql, .tar, .tar.gz, .zip
+     * Supports: .dump, .sql, .tar, .tar.gz, .zip, .zst
      */
     public RestoreResult restoreDatabase(String databaseType, MultipartFile file) throws IOException {
         if (file.isEmpty()) {
@@ -112,7 +112,7 @@ public class PostgreSQLRestoreService {
             Path backupFile = extractBackupFile(uploadedFile, tempDir);
             
             if (backupFile == null) {
-                throw new IOException("No valid database backup file found. Supported: .dump, .sql, .tar, .tar.gz");
+                throw new IOException("No valid database backup file found. Supported: .dump, .sql, .tar, .tar.gz, .zst");
             }
 
             logger.info("Found backup file: {}", backupFile);
@@ -132,6 +132,17 @@ public class PostgreSQLRestoreService {
             } else if (filename.endsWith(".tar") || filename.endsWith(".tar.gz")) {
                 // TAR archive (BlackPearl format)
                 result = restoreFromTar(databaseType, backupFile, tempDir, dbInfo);
+            } else if (filename.endsWith(".zst")) {
+                // Zstandard compressed file - decompress first, then try to restore
+                Path decompressed = extractFromZst(backupFile, tempDir);
+                String decompressedName = decompressed.getFileName().toString().toLowerCase();
+                if (decompressedName.endsWith(".dump")) {
+                    result = restoreFromDump(databaseType, decompressed, dbInfo);
+                } else if (decompressedName.endsWith(".sql")) {
+                    result = restoreFromSql(databaseType, decompressed, dbInfo);
+                } else {
+                    throw new IOException("Decompressed .zst file is not a recognized format: " + decompressedName);
+                }
             } else {
                 throw new IOException("Unsupported backup format: " + filename);
             }
@@ -167,7 +178,12 @@ public class PostgreSQLRestoreService {
             return extractFromGz(archiveFile, extractDir);
         }
 
-        throw new IOException("Unsupported archive format. Supported: .zip, .gz, .dump, .sql, .tar, .tar.gz");
+        // Handle ZST files (Zstandard)
+        if (filename.endsWith(".zst")) {
+            return extractFromZst(archiveFile, extractDir);
+        }
+
+        throw new IOException("Unsupported archive format. Supported: .zip, .gz, .zst, .dump, .sql, .tar, .tar.gz");
     }
 
     private Path extractFromZip(Path zipFile, Path extractDir) throws IOException {
@@ -190,7 +206,8 @@ public class PostgreSQLRestoreService {
                     // Look for backup files
                     String entryName = entry.getName().toLowerCase();
                     if (entryName.endsWith(".dump") || entryName.endsWith(".sql") || 
-                        entryName.endsWith(".tar") || entryName.endsWith(".tar.gz")) {
+                        entryName.endsWith(".tar") || entryName.endsWith(".tar.gz") ||
+                        entryName.endsWith(".zst")) {
                         backupFile = entryPath;
                     }
                 }
@@ -215,6 +232,59 @@ public class PostgreSQLRestoreService {
         }
         
         return outputFile;
+    }
+
+    private Path extractFromZst(Path zstFile, Path extractDir) throws IOException {
+        String baseName = zstFile.getFileName().toString();
+        if (baseName.endsWith(".zst")) {
+            baseName = baseName.substring(0, baseName.length() - 4);
+        }
+        
+        Path outputFile = extractDir.resolve(baseName);
+        
+        // Use zstd command-line tool to decompress
+        List<String> command = new ArrayList<>();
+        command.add("zstd");
+        command.add("-d");
+        command.add("-f");
+        command.add("-o");
+        command.add(outputFile.toAbsolutePath().toString());
+        command.add(zstFile.toAbsolutePath().toString());
+        
+        ProcessBuilder pb = new ProcessBuilder(command);
+        pb.redirectErrorStream(true);
+        
+        try {
+            Process process = pb.start();
+            
+            // Capture output
+            StringBuilder output = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append("\n");
+                    logger.debug("zstd: {}", line);
+                }
+            }
+            
+            int exitCode = process.waitFor();
+            
+            if (exitCode == 0 && Files.exists(outputFile)) {
+                logger.info("Successfully decompressed .zst file to: {}", outputFile);
+                return outputFile;
+            } else {
+                throw new IOException("zstd decompression failed with exit code " + exitCode + ": " + output.toString());
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("zstd decompression interrupted", e);
+        } catch (IOException e) {
+            if (e.getMessage().contains("Cannot run program \"zstd\"")) {
+                throw new IOException("zstd command not found. Please install zstd: sudo apt-get install zstd (Ubuntu) or sudo yum install zstd (CentOS)", e);
+            }
+            throw e;
+        }
     }
 
     /**

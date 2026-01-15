@@ -12,7 +12,7 @@ The Migration Tracker now supports uploading and restoring database backups dire
 
 2. **Upload Your Backup**
    - Click the upload area or drag and drop your backup file
-   - Supported formats: `.db`, `.zip`, `.tar.gz`, `.gz`, `.tar`
+   - Supported formats: `.db`, `.zip`, `.tar.gz`, `.gz`, `.tar`, `.zst`
    - Maximum file size: 500MB
 
 3. **Automatic Restore**

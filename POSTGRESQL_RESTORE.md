@@ -15,7 +15,7 @@ The Migration Tracker supports uploading and restoring BlackPearl and Rio Postgr
 
 3. **Upload Your Backup**
    - Click the upload area or drag and drop your backup file
-   - Supported formats: `.dump`, `.sql`, `.tar`, `.tar.gz`, `.zip`
+   - Supported formats: `.dump`, `.sql`, `.tar`, `.tar.gz`, `.zip`, `.zst`
    - Maximum file size: 2GB
 
 4. **Automatic Restore & Configuration**
@@ -38,6 +38,7 @@ The Migration Tracker supports uploading and restoring BlackPearl and Rio Postgr
 - **`.zip`** - ZIP archive containing `.dump` or `.sql` file
 - **`.tar.gz`** or **`.tgz`** - Compressed TAR archive
 - **`.tar`** - TAR archive (Note: TAR archives may require manual setup for BlackPearl)
+- **`.zst`** - Zstandard compressed file (requires `zstd` command-line tool)
 
 ## Prerequisites
 

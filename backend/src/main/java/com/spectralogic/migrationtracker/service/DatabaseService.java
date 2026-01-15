@@ -8,6 +8,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.*;
 import java.nio.file.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.GZIPInputStream;
@@ -40,7 +42,7 @@ public class DatabaseService {
 
     /**
      * Restore database from uploaded backup file
-     * Supports: .db, .zip, .tar.gz, .gz
+     * Supports: .db, .zip, .tar.gz, .gz, .zst
      */
     public String restoreDatabase(MultipartFile file) throws IOException {
         if (file.isEmpty()) {
@@ -134,7 +136,12 @@ public class DatabaseService {
             return extractFromTar(archiveFile, extractDir);
         }
 
-        throw new IOException("Unsupported archive format. Supported: .zip, .tar.gz, .tar, .gz, .db");
+        // Handle ZST files (Zstandard)
+        if (filename.endsWith(".zst")) {
+            return extractFromZst(archiveFile, extractDir);
+        }
+
+        throw new IOException("Unsupported archive format. Supported: .zip, .tar.gz, .tar, .gz, .zst, .db");
     }
 
     private Path extractFromZip(Path zipFile, Path extractDir) throws IOException {
@@ -193,6 +200,64 @@ public class DatabaseService {
         
         // Otherwise, recursively try to extract
         return extractDatabaseFile(outputFile, extractDir);
+    }
+
+    private Path extractFromZst(Path zstFile, Path extractDir) throws IOException {
+        String baseName = zstFile.getFileName().toString();
+        if (baseName.endsWith(".zst")) {
+            baseName = baseName.substring(0, baseName.length() - 4);
+        }
+        
+        Path outputFile = extractDir.resolve(baseName);
+        
+        // Use zstd command-line tool to decompress
+        List<String> command = new ArrayList<>();
+        command.add("zstd");
+        command.add("-d");
+        command.add("-f");
+        command.add("-o");
+        command.add(outputFile.toAbsolutePath().toString());
+        command.add(zstFile.toAbsolutePath().toString());
+        
+        ProcessBuilder pb = new ProcessBuilder(command);
+        pb.redirectErrorStream(true);
+        
+        try {
+            Process process = pb.start();
+            
+            // Capture output
+            StringBuilder output = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append("\n");
+                    logger.debug("zstd: {}", line);
+                }
+            }
+            
+            int exitCode = process.waitFor();
+            
+            if (exitCode == 0 && Files.exists(outputFile)) {
+                logger.info("Successfully decompressed .zst file to: {}", outputFile);
+                // If the extracted file is a .db, return it
+                if (baseName.toLowerCase().endsWith(".db")) {
+                    return outputFile;
+                }
+                // Otherwise, recursively try to extract
+                return extractDatabaseFile(outputFile, extractDir);
+            } else {
+                throw new IOException("zstd decompression failed with exit code " + exitCode + ": " + output.toString());
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("zstd decompression interrupted", e);
+        } catch (IOException e) {
+            if (e.getMessage().contains("Cannot run program \"zstd\"")) {
+                throw new IOException("zstd command not found. Please install zstd: sudo apt-get install zstd (Ubuntu) or sudo yum install zstd (CentOS)", e);
+            }
+            throw e;
+        }
     }
 
     private Path extractFromTar(Path tarFile, Path extractDir) throws IOException {
