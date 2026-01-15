@@ -44,8 +44,7 @@ public class WebConfig implements WebMvcConfigurer {
             // Serve all non-API routes as static files
             registry.addResourceHandler("/**")
                     .addResourceLocations("file:" + frontendPath + "/")
-                    .resourceChain(false)
-                    .setCachePeriod(0); // Disable caching for development
+                    .resourceChain(false);
             logger.info("Configured static file serving from: {}", frontendPath);
         } else {
             logger.warn("Frontend dist directory not found! Static files will not be served.");
