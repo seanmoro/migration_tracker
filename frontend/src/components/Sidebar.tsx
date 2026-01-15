@@ -4,6 +4,7 @@ import {
   Users,
   FolderKanban,
   Database,
+  Upload,
 } from 'lucide-react';
 
 const navigation = [
@@ -11,6 +12,7 @@ const navigation = [
   { name: 'Customers', href: '/customers', icon: Users },
   { name: 'Projects', href: '/projects', icon: FolderKanban },
   { name: 'Gather Data', href: '/gather-data', icon: Database },
+  { name: 'Restore PostgreSQL', href: '/database/postgres-restore', icon: Upload },
 ];
 
 export default function Sidebar() {

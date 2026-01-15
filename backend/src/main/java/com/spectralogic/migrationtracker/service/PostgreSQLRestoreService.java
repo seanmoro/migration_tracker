@@ -1,0 +1,503 @@
+package com.spectralogic.migrationtracker.service;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.*;
+import java.nio.file.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.util.zip.GZIPInputStream;
+
+@Service
+public class PostgreSQLRestoreService {
+
+    private static final Logger logger = LoggerFactory.getLogger(PostgreSQLRestoreService.class);
+    
+    private final DatabaseConfigService configService;
+
+    public PostgreSQLRestoreService(DatabaseConfigService configService) {
+        this.configService = configService;
+    }
+
+    @Value("${postgres.blackpearl.host:localhost}")
+    private String blackpearlHost;
+
+    @Value("${postgres.blackpearl.port:5432}")
+    private int blackpearlPort;
+
+    @Value("${postgres.blackpearl.database:tapesystem}")
+    private String blackpearlDatabase;
+
+    @Value("${postgres.blackpearl.username:postgres}")
+    private String blackpearlUsername;
+
+    @Value("${postgres.blackpearl.password:}")
+    private String blackpearlPassword;
+
+    @Value("${postgres.rio.host:localhost}")
+    private String rioHost;
+
+    @Value("${postgres.rio.port:5432}")
+    private int rioPort;
+
+    @Value("${postgres.rio.database:rio_db}")
+    private String rioDatabase;
+
+    @Value("${postgres.rio.username:postgres}")
+    private String rioUsername;
+
+    @Value("${postgres.rio.password:}")
+    private String rioPassword;
+
+    /**
+     * Restore PostgreSQL database from backup file
+     * Supports: .dump, .sql, .tar, .tar.gz, .zip
+     */
+    public RestoreResult restoreDatabase(String databaseType, MultipartFile file) throws IOException {
+        if (file.isEmpty()) {
+            throw new IllegalArgumentException("Uploaded file is empty");
+        }
+
+        String originalFilename = file.getOriginalFilename();
+        if (originalFilename == null || originalFilename.isEmpty()) {
+            throw new IllegalArgumentException("File name is missing");
+        }
+
+        if (!databaseType.equalsIgnoreCase("blackpearl") && !databaseType.equalsIgnoreCase("rio")) {
+            throw new IllegalArgumentException("Database type must be 'blackpearl' or 'rio'");
+        }
+
+        logger.info("Restoring {} database from file: {}", databaseType, originalFilename);
+
+        // Get database connection info
+        // If not configured, default to localhost for automatic setup
+        DatabaseInfo dbInfo = getDatabaseInfo(databaseType);
+        
+        // If host is not configured or is default, use localhost for automatic setup
+        if (dbInfo.host == null || dbInfo.host.isEmpty() || 
+            (dbInfo.host.equals("localhost") && (dbInfo.password == null || dbInfo.password.isEmpty()))) {
+            logger.info("No database connection configured - will restore to localhost with default credentials");
+            dbInfo.host = "localhost";
+            dbInfo.port = 5432;
+            dbInfo.username = "postgres";
+            dbInfo.password = "";
+            // Use default database name
+            if (databaseType.equalsIgnoreCase("blackpearl")) {
+                dbInfo.database = "tapesystem";
+            } else {
+                dbInfo.database = "rio_db";
+            }
+        }
+
+        // Create temp directory for processing
+        Path tempDir = Files.createTempDirectory("pg-restore-");
+        Path uploadedFile = tempDir.resolve(originalFilename);
+
+        try {
+            // Save uploaded file
+            File targetFile = uploadedFile.toFile();
+            if (targetFile == null) {
+                throw new IOException("Failed to create target file");
+            }
+            file.transferTo(targetFile);
+            logger.debug("Saved uploaded file to: {}", uploadedFile);
+
+            // Extract and find database backup file
+            Path backupFile = extractBackupFile(uploadedFile, tempDir);
+            
+            if (backupFile == null) {
+                throw new IOException("No valid database backup file found. Supported: .dump, .sql, .tar, .tar.gz");
+            }
+
+            logger.info("Found backup file: {}", backupFile);
+
+            // Determine backup format
+            String filename = backupFile.getFileName().toString().toLowerCase();
+            RestoreResult result = new RestoreResult();
+            result.setDatabaseType(databaseType);
+            result.setFilename(originalFilename);
+
+            if (filename.endsWith(".dump")) {
+                // PostgreSQL custom format dump
+                result = restoreFromDump(databaseType, backupFile, dbInfo);
+            } else if (filename.endsWith(".sql")) {
+                // SQL script dump
+                result = restoreFromSql(databaseType, backupFile, dbInfo);
+            } else if (filename.endsWith(".tar") || filename.endsWith(".tar.gz")) {
+                // TAR archive (BlackPearl format)
+                result = restoreFromTar(databaseType, backupFile, tempDir, dbInfo);
+            } else {
+                throw new IOException("Unsupported backup format: " + filename);
+            }
+
+            result.setFilename(originalFilename);
+            return result;
+
+        } finally {
+            // Clean up temp directory
+            deleteDirectory(tempDir.toFile());
+        }
+    }
+
+    /**
+     * Extract backup file from archive
+     */
+    private Path extractBackupFile(Path archiveFile, Path extractDir) throws IOException {
+        String filename = archiveFile.getFileName().toString().toLowerCase();
+
+        // If it's already a backup file, return it
+        if (filename.endsWith(".dump") || filename.endsWith(".sql") || 
+            filename.endsWith(".tar") || filename.endsWith(".tar.gz")) {
+            return archiveFile;
+        }
+
+        // Handle ZIP files
+        if (filename.endsWith(".zip")) {
+            return extractFromZip(archiveFile, extractDir);
+        }
+
+        // Handle GZ files
+        if (filename.endsWith(".gz")) {
+            return extractFromGz(archiveFile, extractDir);
+        }
+
+        throw new IOException("Unsupported archive format. Supported: .zip, .gz, .dump, .sql, .tar, .tar.gz");
+    }
+
+    private Path extractFromZip(Path zipFile, Path extractDir) throws IOException {
+        try (ZipInputStream zis = new ZipInputStream(new FileInputStream(zipFile.toFile()))) {
+            ZipEntry entry;
+            Path backupFile = null;
+
+            while ((entry = zis.getNextEntry()) != null) {
+                Path entryPath = extractDir.resolve(entry.getName());
+                
+                if (entry.isDirectory()) {
+                    Files.createDirectories(entryPath);
+                } else {
+                    Files.createDirectories(entryPath.getParent());
+                    
+                    try (FileOutputStream fos = new FileOutputStream(entryPath.toFile())) {
+                        zis.transferTo(fos);
+                    }
+                    
+                    // Look for backup files
+                    String entryName = entry.getName().toLowerCase();
+                    if (entryName.endsWith(".dump") || entryName.endsWith(".sql") || 
+                        entryName.endsWith(".tar") || entryName.endsWith(".tar.gz")) {
+                        backupFile = entryPath;
+                    }
+                }
+                zis.closeEntry();
+            }
+
+            return backupFile;
+        }
+    }
+
+    private Path extractFromGz(Path gzFile, Path extractDir) throws IOException {
+        String baseName = gzFile.getFileName().toString();
+        if (baseName.endsWith(".gz")) {
+            baseName = baseName.substring(0, baseName.length() - 3);
+        }
+        
+        Path outputFile = extractDir.resolve(baseName);
+        
+        try (GZIPInputStream gis = new GZIPInputStream(new FileInputStream(gzFile.toFile()));
+             FileOutputStream fos = new FileOutputStream(outputFile.toFile())) {
+            gis.transferTo(fos);
+        }
+        
+        return outputFile;
+    }
+
+    /**
+     * Restore from PostgreSQL custom format dump (.dump)
+     */
+    private RestoreResult restoreFromDump(String databaseType, Path dumpFile, DatabaseInfo dbInfo) throws IOException {
+        RestoreResult result = new RestoreResult();
+        result.setDatabaseType(databaseType);
+        result.setFormat("custom");
+
+        // Build pg_restore command
+        List<String> command = new ArrayList<>();
+        command.add("pg_restore");
+        command.add("-h"); command.add(dbInfo.host);
+        command.add("-p"); command.add(String.valueOf(dbInfo.port));
+        command.add("-U"); command.add(dbInfo.username);
+        command.add("-d"); command.add(dbInfo.database);
+        command.add("--clean");
+        command.add("--if-exists");
+        command.add("--no-owner");
+        command.add("--no-acl");
+        command.add(dumpFile.toAbsolutePath().toString());
+
+        // Set password via environment variable
+        ProcessBuilder pb = new ProcessBuilder(command);
+        pb.environment().put("PGPASSWORD", dbInfo.password);
+        pb.redirectErrorStream(true);
+
+        try {
+            Process process = pb.start();
+            
+            // Capture output
+            StringBuilder output = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append("\n");
+                    logger.debug("pg_restore: {}", line);
+                }
+            }
+
+            int exitCode = process.waitFor();
+            
+            if (exitCode == 0) {
+                result.setSuccess(true);
+                result.setMessage("Database restored successfully from .dump file");
+                logger.info("Successfully restored {} database from dump file", databaseType);
+                
+                // Automatically configure database access
+                configureDatabaseAccessAfterRestore(databaseType, dbInfo);
+            } else {
+                result.setSuccess(false);
+                result.setError("pg_restore failed with exit code " + exitCode + ": " + output.toString());
+                logger.error("pg_restore failed: {}", output.toString());
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            result.setSuccess(false);
+            result.setError("Restore process was interrupted: " + e.getMessage());
+            throw new IOException("Restore process interrupted", e);
+        } catch (IOException e) {
+            result.setSuccess(false);
+            result.setError("Failed to execute pg_restore: " + e.getMessage());
+            throw e;
+        }
+
+        return result;
+    }
+
+    /**
+     * Restore from SQL script (.sql)
+     */
+    private RestoreResult restoreFromSql(String databaseType, Path sqlFile, DatabaseInfo dbInfo) throws IOException {
+        RestoreResult result = new RestoreResult();
+        result.setDatabaseType(databaseType);
+        result.setFormat("sql");
+
+        // Build psql command
+        List<String> command = new ArrayList<>();
+        command.add("psql");
+        command.add("-h"); command.add(dbInfo.host);
+        command.add("-p"); command.add(String.valueOf(dbInfo.port));
+        command.add("-U"); command.add(dbInfo.username);
+        command.add("-d"); command.add(dbInfo.database);
+        command.add("-f"); command.add(sqlFile.toAbsolutePath().toString());
+
+        // Set password via environment variable
+        ProcessBuilder pb = new ProcessBuilder(command);
+        pb.environment().put("PGPASSWORD", dbInfo.password);
+        pb.redirectErrorStream(true);
+
+        try {
+            Process process = pb.start();
+            
+            // Capture output
+            StringBuilder output = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append("\n");
+                    logger.debug("psql: {}", line);
+                }
+            }
+
+            int exitCode = process.waitFor();
+            
+            if (exitCode == 0) {
+                result.setSuccess(true);
+                result.setMessage("Database restored successfully from SQL file");
+                logger.info("Successfully restored {} database from SQL file", databaseType);
+                
+                // Automatically configure database access
+                configureDatabaseAccessAfterRestore(databaseType, dbInfo);
+            } else {
+                result.setSuccess(false);
+                result.setError("psql failed with exit code " + exitCode + ": " + output.toString());
+                logger.error("psql failed: {}", output.toString());
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            result.setSuccess(false);
+            result.setError("Restore process was interrupted: " + e.getMessage());
+            throw new IOException("Restore process interrupted", e);
+        } catch (IOException e) {
+            result.setSuccess(false);
+            result.setError("Failed to execute psql: " + e.getMessage());
+            throw e;
+        }
+
+        return result;
+    }
+
+    /**
+     * Restore from TAR archive (BlackPearl format)
+     * This extracts the tar to a directory - actual restore depends on setup
+     */
+    private RestoreResult restoreFromTar(String databaseType, Path tarFile, Path extractDir, DatabaseInfo dbInfo) throws IOException {
+        RestoreResult result = new RestoreResult();
+        result.setDatabaseType(databaseType);
+        result.setFormat("tar");
+
+        // For TAR files, we extract them
+        // BlackPearl uses tar archives that need to be extracted to a data directory
+        // This is more complex and may require system-level access
+        
+        result.setSuccess(false);
+        result.setError("TAR archive restore requires system-level PostgreSQL setup. " +
+                       "Please use .dump or .sql format, or use the unpack_database script manually.");
+        result.setMessage("TAR archives require manual setup. See documentation for details.");
+
+        return result;
+    }
+
+    private DatabaseInfo getDatabaseInfo(String databaseType) {
+        DatabaseInfo info = new DatabaseInfo();
+        if (databaseType.equalsIgnoreCase("blackpearl")) {
+            info.host = blackpearlHost;
+            info.port = blackpearlPort;
+            info.database = blackpearlDatabase;
+            info.username = blackpearlUsername;
+            info.password = blackpearlPassword != null ? blackpearlPassword : "";
+        } else {
+            info.host = rioHost;
+            info.port = rioPort;
+            info.database = rioDatabase;
+            info.username = rioUsername;
+            info.password = rioPassword != null ? rioPassword : "";
+        }
+        return info;
+    }
+
+    /**
+     * Automatically configure database access after successful restore
+     * Updates .env file with connection settings so credentials are not needed separately
+     */
+    private void configureDatabaseAccessAfterRestore(String databaseType, DatabaseInfo dbInfo) {
+        try {
+            // If restoring to localhost, use default postgres credentials
+            // This allows the tool to access the database without separate credentials
+            if ("localhost".equals(dbInfo.host) || "127.0.0.1".equals(dbInfo.host)) {
+                logger.info("Restored to localhost - configuring local database access");
+                configService.configureLocalDatabaseAccess(databaseType, dbInfo.database);
+            } else {
+                // For remote databases, save the connection info
+                logger.info("Restored to remote host - saving connection configuration");
+                configService.configureDatabaseAccess(
+                    databaseType,
+                    dbInfo.host,
+                    dbInfo.port,
+                    dbInfo.database,
+                    dbInfo.username,
+                    dbInfo.password
+                );
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to automatically configure database access: {}", e.getMessage());
+            // Don't fail the restore if config save fails
+        }
+    }
+
+    /**
+     * Recursively delete directory
+     */
+    private void deleteDirectory(File directory) {
+        if (directory.exists()) {
+            File[] files = directory.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    if (file.isDirectory()) {
+                        deleteDirectory(file);
+                    } else {
+                        file.delete();
+                    }
+                }
+            }
+            directory.delete();
+        }
+    }
+
+    private static class DatabaseInfo {
+        String host;
+        int port;
+        String database;
+        String username;
+        String password;
+    }
+
+    public static class RestoreResult {
+        private boolean success;
+        private String message;
+        private String error;
+        private String databaseType;
+        private String format;
+        private String filename;
+
+        public boolean isSuccess() {
+            return success;
+        }
+
+        public void setSuccess(boolean success) {
+            this.success = success;
+        }
+
+        public String getMessage() {
+            return message;
+        }
+
+        public void setMessage(String message) {
+            this.message = message;
+        }
+
+        public String getError() {
+            return error;
+        }
+
+        public void setError(String error) {
+            this.error = error;
+        }
+
+        public String getDatabaseType() {
+            return databaseType;
+        }
+
+        public void setDatabaseType(String databaseType) {
+            this.databaseType = databaseType;
+        }
+
+        public String getFormat() {
+            return format;
+        }
+
+        public void setFormat(String format) {
+            this.format = format;
+        }
+
+        public String getFilename() {
+            return filename;
+        }
+
+        public void setFilename(String filename) {
+            this.filename = filename;
+        }
+    }
+}

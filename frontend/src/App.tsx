@@ -6,6 +6,8 @@ import Projects from './views/Projects';
 import Phases from './views/Phases';
 import PhaseProgress from './views/PhaseProgress';
 import GatherData from './views/GatherData';
+import DatabaseRestore from './views/DatabaseRestore';
+import PostgreSQLRestore from './views/PostgreSQLRestore';
 
 function App() {
   return (
@@ -18,6 +20,8 @@ function App() {
           <Route path="/projects/:projectId/phases" element={<Phases />} />
           <Route path="/phases/:phaseId/progress" element={<PhaseProgress />} />
           <Route path="/gather-data" element={<GatherData />} />
+          <Route path="/database/restore" element={<DatabaseRestore />} />
+          <Route path="/database/postgres-restore" element={<PostgreSQLRestore />} />
         </Routes>
       </Layout>
     </BrowserRouter>
