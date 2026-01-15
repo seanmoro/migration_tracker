@@ -40,13 +40,11 @@ public class WebConfig implements WebMvcConfigurer {
         
         if (frontendPath != null) {
             // Serve static files from frontend/dist
-            // Exclude /api/** routes - they're handled by REST controllers
-            // Set order to ensure API routes are checked first
+            // Note: REST controllers have higher precedence and will handle /api/** routes first
             registry.addResourceHandler("/**")
                     .addResourceLocations("file:" + frontendPath + "/")
-                    .resourceChain(false)
-                    .setOrder(1); // Lower priority - REST controllers have default order 0
-            logger.info("Configured static file serving from: {} (order: 1)", frontendPath);
+                    .resourceChain(false);
+            logger.info("Configured static file serving from: {}", frontendPath);
         } else {
             logger.warn("Frontend dist directory not found! Static files will not be served.");
             logger.warn("Current working directory: {}", System.getProperty("user.dir"));
