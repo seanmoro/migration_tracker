@@ -18,7 +18,6 @@ export default function DatabaseUpload({ onSuccess, databaseType = 'tracker' }: 
   const handleFile = async (file: File) => {
     // Validate file type based on database type
     let validExtensions: string[];
-    const isPostgreSQL = databaseType === 'blackpearl' || databaseType === 'rio' || databaseType === 'postgres';
     if (databaseType === 'tracker') {
       validExtensions = ['.db', '.zip', '.tar.gz', '.tgz', '.gz', '.tar'];
     } else {
