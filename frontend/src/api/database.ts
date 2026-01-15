@@ -29,6 +29,7 @@ export const databaseApi = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: 600000, // 10 minutes for large file uploads and decompression
     });
     
     return response.data;
@@ -45,6 +46,7 @@ export const databaseApi = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: 600000, // 10 minutes for large file uploads and decompression
     });
     
     return response.data;

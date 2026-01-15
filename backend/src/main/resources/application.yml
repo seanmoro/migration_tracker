@@ -51,6 +51,14 @@ server:
   address: ${SERVER_ADDRESS:0.0.0.0}
   servlet:
     context-path: ${SERVER_CONTEXT_PATH:}
+  # Increase timeouts for large file uploads
+  connection-timeout: 600000  # 10 minutes
+  tomcat:
+    connection-timeout: 600000  # 10 minutes
+    max-connections: 200
+    threads:
+      max: 200
+      min-spare: 10
 
 springdoc:
   api-docs:
