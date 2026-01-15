@@ -2,6 +2,12 @@ spring:
   application:
     name: migration-tracker-api
   
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 500MB
+      max-request-size: 500MB
+  
   datasource:
     # Database path will be resolved in DatabaseConfig.java
     # This is a placeholder - actual path resolution happens in code
