@@ -56,6 +56,20 @@ sudo yum install postgresql
 brew install postgresql
 ```
 
+### 1a. Zstandard Tool (for .zst files)
+If you plan to use `.zst` files, install the `zstd` tool:
+
+```bash
+# Ubuntu/Debian
+sudo apt-get install zstd
+
+# CentOS/RHEL
+sudo yum install zstd
+
+# macOS
+brew install zstd
+```
+
 ### 2. Database Connection Configuration
 
 **Automatic Configuration (Recommended):**
