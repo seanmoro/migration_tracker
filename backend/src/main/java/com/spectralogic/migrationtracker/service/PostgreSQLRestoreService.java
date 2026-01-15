@@ -420,22 +420,70 @@ public class PostgreSQLRestoreService {
     }
 
     /**
-     * Restore from TAR archive (BlackPearl format)
-     * This extracts the tar to a directory - actual restore depends on setup
+     * Restore from TAR archive (PostgreSQL TAR format)
+     * PostgreSQL TAR format can be restored using pg_restore with -F t flag
      */
     private RestoreResult restoreFromTar(String databaseType, Path tarFile, Path extractDir, DatabaseInfo dbInfo) throws IOException {
         RestoreResult result = new RestoreResult();
         result.setDatabaseType(databaseType);
         result.setFormat("tar");
 
-        // For TAR files, we extract them
-        // BlackPearl uses tar archives that need to be extracted to a data directory
-        // This is more complex and may require system-level access
-        
-        result.setSuccess(false);
-        result.setError("TAR archive restore requires system-level PostgreSQL setup. " +
-                       "Please use .dump or .sql format, or use the unpack_database script manually.");
-        result.setMessage("TAR archives require manual setup. See documentation for details.");
+        // Build pg_restore command for TAR format
+        List<String> command = new ArrayList<>();
+        command.add("pg_restore");
+        command.add("-h"); command.add(dbInfo.host);
+        command.add("-p"); command.add(String.valueOf(dbInfo.port));
+        command.add("-U"); command.add(dbInfo.username);
+        command.add("-d"); command.add(dbInfo.database);
+        command.add("-F"); command.add("t");  // TAR format
+        command.add("-v");  // Verbose
+        command.add("--no-owner");  // Don't restore ownership
+        command.add("--no-privileges");  // Don't restore privileges
+        command.add(tarFile.toAbsolutePath().toString());
+
+        // Set password via environment variable
+        ProcessBuilder pb = new ProcessBuilder(command);
+        pb.environment().put("PGPASSWORD", dbInfo.password);
+        pb.redirectErrorStream(true);
+
+        try {
+            Process process = pb.start();
+            
+            // Capture output
+            StringBuilder output = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append("\n");
+                    logger.debug("pg_restore (tar): {}", line);
+                }
+            }
+
+            int exitCode = process.waitFor();
+            
+            if (exitCode == 0) {
+                result.setSuccess(true);
+                result.setMessage("Database restored successfully from TAR archive");
+                logger.info("Successfully restored {} database from TAR archive", databaseType);
+                
+                // Automatically configure database access
+                configureDatabaseAccessAfterRestore(databaseType, dbInfo);
+            } else {
+                result.setSuccess(false);
+                result.setError("pg_restore failed with exit code " + exitCode + ": " + output.toString());
+                logger.error("pg_restore (tar) failed: {}", output.toString());
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            result.setSuccess(false);
+            result.setError("Restore process was interrupted: " + e.getMessage());
+            throw new IOException("Restore process interrupted", e);
+        } catch (IOException e) {
+            result.setSuccess(false);
+            result.setError("Failed to execute pg_restore: " + e.getMessage());
+            throw e;
+        }
 
         return result;
     }
