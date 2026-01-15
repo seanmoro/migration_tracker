@@ -1,5 +1,7 @@
 package com.spectralogic.migrationtracker.config;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
@@ -10,14 +12,18 @@ import java.io.File;
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
 
+    private static final Logger logger = LoggerFactory.getLogger(WebConfig.class);
+
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
         // Try to find frontend dist directory
+        // Check multiple possible locations
         String[] possiblePaths = {
-            "../frontend/dist",
-            "frontend/dist",
-            "../dist",
-            "dist"
+            "/home/seans/new_tracker/frontend/dist",  // Known installation path
+            "../frontend/dist",                        // Relative from JAR location
+            "frontend/dist",                           // Relative from working directory
+            "../dist",                                 // Alternative relative path
+            "dist"                                     // Current directory
         };
         
         String frontendPath = null;
@@ -25,15 +31,23 @@ public class WebConfig implements WebMvcConfigurer {
             File distDir = new File(path);
             if (distDir.exists() && distDir.isDirectory()) {
                 frontendPath = distDir.getAbsolutePath();
+                logger.info("Found frontend dist directory at: {}", frontendPath);
                 break;
+            } else {
+                logger.debug("Frontend dist not found at: {} (absolute: {})", path, distDir.getAbsolutePath());
             }
         }
         
         if (frontendPath != null) {
             // Serve static files from frontend/dist
+            // Exclude /api/** routes - they're handled by REST controllers
             registry.addResourceHandler("/**")
                     .addResourceLocations("file:" + frontendPath + "/")
                     .resourceChain(false);
+            logger.info("Configured static file serving from: {}", frontendPath);
+        } else {
+            logger.warn("Frontend dist directory not found! Static files will not be served.");
+            logger.warn("Current working directory: {}", System.getProperty("user.dir"));
         }
     }
 
