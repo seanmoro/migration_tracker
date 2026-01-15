@@ -483,9 +483,20 @@ public class PostgreSQLRestoreService {
                 // Automatically configure database access
                 configureDatabaseAccessAfterRestore(databaseType, dbInfo);
             } else {
-                result.setSuccess(false);
-                result.setError("pg_restore failed with exit code " + exitCode + ": " + output.toString());
-                logger.error("pg_restore (tar) failed: {}", output.toString());
+                // Check if it's a plain TAR archive (not PostgreSQL TAR format)
+                String errorOutput = output.toString();
+                if (errorOutput.contains("could not find header for file toc.dat") || 
+                    errorOutput.contains("not a tar archive") ||
+                    errorOutput.contains("invalid tar header")) {
+                    // This is likely a plain TAR archive, not PostgreSQL TAR format
+                    // Try extracting it and looking for .sql or .dump files
+                    logger.info("TAR file is not PostgreSQL TAR format, attempting to extract and find backup files");
+                    return restoreFromPlainTar(databaseType, actualTarFile, extractDir, dbInfo);
+                } else {
+                    result.setSuccess(false);
+                    result.setError("pg_restore failed with exit code " + exitCode + ": " + errorOutput);
+                    logger.error("pg_restore (tar) failed: {}", errorOutput);
+                }
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -499,6 +510,95 @@ public class PostgreSQLRestoreService {
         }
 
         return result;
+    }
+
+    /**
+     * Restore from plain TAR archive (not PostgreSQL TAR format)
+     * Extracts the TAR and looks for .sql or .dump files inside
+     */
+    private RestoreResult restoreFromPlainTar(String databaseType, Path tarFile, Path extractDir, DatabaseInfo dbInfo) throws IOException {
+        RestoreResult result = new RestoreResult();
+        result.setDatabaseType(databaseType);
+        result.setFormat("tar (plain)");
+
+        // Extract TAR archive using system tar command
+        List<String> extractCommand = new ArrayList<>();
+        extractCommand.add("tar");
+        extractCommand.add("-xf");
+        extractCommand.add(tarFile.toAbsolutePath().toString());
+        extractCommand.add("-C");
+        extractCommand.add(extractDir.toAbsolutePath().toString());
+
+        ProcessBuilder extractPb = new ProcessBuilder(extractCommand);
+        extractPb.redirectErrorStream(true);
+
+        try {
+            Process extractProcess = extractPb.start();
+            StringBuilder extractOutput = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(extractProcess.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    extractOutput.append(line).append("\n");
+                    logger.debug("tar extract: {}", line);
+                }
+            }
+
+            int extractExitCode = extractProcess.waitFor();
+            if (extractExitCode != 0) {
+                result.setSuccess(false);
+                result.setError("Failed to extract TAR archive: " + extractOutput.toString());
+                return result;
+            }
+
+            logger.info("Successfully extracted TAR archive to: {}", extractDir);
+
+            // Look for .sql or .dump files in the extracted directory
+            final Path[] foundSqlFile = {null};
+            final Path[] foundDumpFile = {null};
+            
+            try {
+                Files.walk(extractDir).forEach(path -> {
+                    String name = path.getFileName().toString().toLowerCase();
+                    if (name.endsWith(".sql") && Files.isRegularFile(path)) {
+                        if (foundSqlFile[0] == null) {
+                            foundSqlFile[0] = path;
+                        }
+                    } else if (name.endsWith(".dump") && Files.isRegularFile(path)) {
+                        if (foundDumpFile[0] == null) {
+                            foundDumpFile[0] = path;
+                        }
+                    }
+                });
+            } catch (IOException e) {
+                result.setSuccess(false);
+                result.setError("Failed to search extracted files: " + e.getMessage());
+                return result;
+            }
+
+            // Restore using the found file
+            if (foundDumpFile[0] != null) {
+                logger.info("Found .dump file in TAR archive: {}", foundDumpFile[0]);
+                return restoreFromDump(databaseType, foundDumpFile[0], dbInfo);
+            } else if (foundSqlFile[0] != null) {
+                logger.info("Found .sql file in TAR archive: {}", foundSqlFile[0]);
+                return restoreFromSql(databaseType, foundSqlFile[0], dbInfo);
+            } else {
+                result.setSuccess(false);
+                result.setError("No .sql or .dump files found in TAR archive. Please ensure the archive contains a PostgreSQL backup file.");
+                return result;
+            }
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            result.setSuccess(false);
+            result.setError("TAR extraction was interrupted: " + e.getMessage());
+            throw new IOException("TAR extraction interrupted", e);
+        } catch (IOException e) {
+            result.setSuccess(false);
+            result.setError("Failed to extract TAR archive: " + e.getMessage());
+            throw e;
+        }
     }
 
     private DatabaseInfo getDatabaseInfo(String databaseType) {
