@@ -53,11 +53,25 @@ export const dashboardApi = {
     try {
       const response = await apiClient.get('/dashboard/active-phases-by-customer');
       if (Array.isArray(response.data)) {
-        // Also validate nested structure
+        // Check if response is in wrong format (projects instead of CustomerPhases)
+        // Projects have: id, name, customerId, type, createdAt, lastUpdated, active
+        // CustomerPhases have: customerId, customerName, projects
+        if (response.data.length > 0) {
+          const firstItem = response.data[0];
+          // If it looks like a project (has 'id' and 'type' but no 'customerName'), it's wrong format
+          if (firstItem.id && firstItem.type && !firstItem.customerName && !firstItem.projects) {
+            console.warn('API returned projects instead of CustomerPhases. This may indicate no phases exist yet.');
+            return [];
+          }
+        }
+        
+        // Validate and normalize nested structure
         return response.data.map((customer: any) => ({
-          ...customer,
+          customerId: customer.customerId || '',
+          customerName: customer.customerName || 'Unknown Customer',
           projects: Array.isArray(customer.projects) ? customer.projects.map((project: any) => ({
-            ...project,
+            projectId: project.projectId || '',
+            projectName: project.projectName || 'Unknown Project',
             phases: Array.isArray(project.phases) ? project.phases : []
           })) : []
         }));
