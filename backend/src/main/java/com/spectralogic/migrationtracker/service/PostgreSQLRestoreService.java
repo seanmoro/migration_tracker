@@ -140,6 +140,10 @@ public class PostgreSQLRestoreService {
                     result = restoreFromDump(databaseType, decompressed, dbInfo);
                 } else if (decompressedName.endsWith(".sql")) {
                     result = restoreFromSql(databaseType, decompressed, dbInfo);
+                } else if (decompressedName.endsWith(".tar")) {
+                    // Decompressed .zst gave us a .tar file - extract it and look for backup files
+                    logger.info("Decompressed .zst file is a TAR archive, extracting and searching for backup files");
+                    result = restoreFromPlainTar(databaseType, decompressed, tempDir, dbInfo);
                 } else {
                     throw new IOException("Decompressed .zst file is not a recognized format: " + decompressedName);
                 }
