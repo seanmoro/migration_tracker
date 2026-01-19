@@ -23,6 +23,9 @@ export default function Customers() {
         : customersApi.list(),
   });
 
+  // Debug logging
+  console.log('Customers component - customers:', customers, 'isLoading:', isLoading);
+
   const deleteMutation = useMutation({
     mutationFn: (id: string) => customersApi.delete(id),
     onSuccess: () => {

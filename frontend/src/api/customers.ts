@@ -5,7 +5,9 @@ export const customersApi = {
   list: async (): Promise<Customer[]> => {
     try {
       const response = await apiClient.get('/customers');
+      console.log('Customers API response:', response.data);
       if (Array.isArray(response.data)) {
+        console.log(`Found ${response.data.length} customers`);
         return response.data;
       }
       console.warn('API returned non-array for customers:', response.data);
