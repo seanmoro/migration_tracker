@@ -20,9 +20,18 @@ export const migrationApi = {
   },
 
   getBuckets: async (source?: 'blackpearl' | 'rio'): Promise<Bucket[]> => {
-    const response = await apiClient.get('/migration/buckets', {
-      params: source ? { source } : {},
-    });
-    return response.data;
+    try {
+      const response = await apiClient.get('/migration/buckets', {
+        params: source ? { source } : {},
+      });
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      console.warn('API returned non-array for buckets:', response.data);
+      return [];
+    } catch (error) {
+      console.error('Error fetching buckets:', error);
+      return [];
+    }
   },
 };
