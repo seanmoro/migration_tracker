@@ -296,61 +296,85 @@ public class StorageDomainService {
             // Query tape partitions
             List<String> tapePartitions = new ArrayList<>();
             try {
-                // Try common table names for tape partitions
-                String[] tapePartitionTables = {"tape_partitions", "tape_partition", "partitions", "partition"};
-                String[] tapePartitionColumns = {"name", "partition_name", "tape_partition"};
+                // First, try the known table: tape.tape_partition.name (most common)
+                try {
+                    List<String> values = jdbc.query(
+                        "SELECT DISTINCT name FROM tape.tape_partition WHERE name IS NOT NULL AND name != '' ORDER BY name",
+                        (rs, rowNum) -> {
+                            String value = rs.getString("name");
+                            return value != null ? value : "";
+                        }
+                    );
+                    if (!values.isEmpty()) {
+                        tapePartitions.addAll(values);
+                        logger.info("Found {} tape partitions from tape.tape_partition.name", values.size());
+                    }
+                } catch (Exception e) {
+                    logger.debug("Could not query tape.tape_partition.name: {}", e.getMessage());
+                }
                 
-                for (String schema : new String[]{"public", "ds3", "tape"}) {
-                    for (String tableName : tapePartitionTables) {
-                        for (String columnName : tapePartitionColumns) {
-                            try {
-                                // Check if table exists
-                                List<String> tables = jdbc.query(
-                                    "SELECT table_name FROM information_schema.tables WHERE table_schema = ? AND table_name = ?",
-                                    (rs, rowNum) -> rs.getString("table_name"),
-                                    schema, tableName
-                                );
-                                
-                                if (tables.isEmpty()) {
-                                    continue;
-                                }
-                                
-                                // Check if column exists
-                                List<String> columns = jdbc.query(
-                                    "SELECT column_name FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND column_name = ?",
-                                    (rs, rowNum) -> rs.getString("column_name"),
-                                    schema, tableName, columnName
-                                );
-                                
-                                if (columns.isEmpty()) {
-                                    continue;
-                                }
-                                
-                                // Query distinct values
-                                List<String> values = jdbc.query(
-                                    String.format("SELECT DISTINCT %s FROM %s.%s WHERE %s IS NOT NULL AND %s != '' ORDER BY %s", 
-                                        columnName, schema, tableName, columnName, columnName, columnName),
-                                    (rs, rowNum) -> {
-                                        String value = rs.getString(columnName);
-                                        return value != null ? value : "";
+                // If not found, try other common table names for tape partitions
+                if (tapePartitions.isEmpty()) {
+                    String[] tapePartitionTables = {"tape_partitions", "tape_partition", "partitions", "partition"};
+                    String[] tapePartitionColumns = {"name", "partition_name", "tape_partition"};
+                    
+                    for (String schema : new String[]{"public", "ds3", "tape"}) {
+                        for (String tableName : tapePartitionTables) {
+                            // Skip tape.tape_partition since we already tried it
+                            if (schema.equals("tape") && tableName.equals("tape_partition")) {
+                                continue;
+                            }
+                            
+                            for (String columnName : tapePartitionColumns) {
+                                try {
+                                    // Check if table exists
+                                    List<String> tables = jdbc.query(
+                                        "SELECT table_name FROM information_schema.tables WHERE table_schema = ? AND table_name = ?",
+                                        (rs, rowNum) -> rs.getString("table_name"),
+                                        schema, tableName
+                                    );
+                                    
+                                    if (tables.isEmpty()) {
+                                        continue;
                                     }
-                                );
-                                
-                                if (!values.isEmpty()) {
-                                    tapePartitions.addAll(values);
-                                    logger.info("Found {} tape partitions from {}.{}.{}", values.size(), schema, tableName, columnName);
-                                    break; // Found partitions, no need to check other columns for this table
+                                    
+                                    // Check if column exists
+                                    List<String> columns = jdbc.query(
+                                        "SELECT column_name FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND column_name = ?",
+                                        (rs, rowNum) -> rs.getString("column_name"),
+                                        schema, tableName, columnName
+                                    );
+                                    
+                                    if (columns.isEmpty()) {
+                                        continue;
+                                    }
+                                    
+                                    // Query distinct values
+                                    List<String> values = jdbc.query(
+                                        String.format("SELECT DISTINCT %s FROM %s.%s WHERE %s IS NOT NULL AND %s != '' ORDER BY %s", 
+                                            columnName, schema, tableName, columnName, columnName, columnName),
+                                        (rs, rowNum) -> {
+                                            String value = rs.getString(columnName);
+                                            return value != null ? value : "";
+                                        }
+                                    );
+                                    
+                                    if (!values.isEmpty()) {
+                                        tapePartitions.addAll(values);
+                                        logger.info("Found {} tape partitions from {}.{}.{}", values.size(), schema, tableName, columnName);
+                                        break; // Found partitions, no need to check other columns for this table
+                                    }
+                                } catch (Exception e) {
+                                    logger.debug("Could not query {}.{}.{}: {}", schema, tableName, columnName, e.getMessage());
                                 }
-                            } catch (Exception e) {
-                                logger.debug("Could not query {}.{}.{}: {}", schema, tableName, columnName, e.getMessage());
+                            }
+                            if (!tapePartitions.isEmpty()) {
+                                break; // Found partitions, no need to check other tables
                             }
                         }
                         if (!tapePartitions.isEmpty()) {
-                            break; // Found partitions, no need to check other tables
+                            break; // Found partitions, no need to check other schemas
                         }
-                    }
-                    if (!tapePartitions.isEmpty()) {
-                        break; // Found partitions, no need to check other schemas
                     }
                 }
             } catch (Exception e) {
