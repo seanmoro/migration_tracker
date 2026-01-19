@@ -3,9 +3,18 @@ import { MigrationProject } from '../types';
 
 export const projectsApi = {
   list: async (customerId?: string): Promise<MigrationProject[]> => {
-    const params = customerId ? { customerId } : {};
-    const response = await apiClient.get('/projects', { params });
-    return response.data;
+    try {
+      const params = customerId ? { customerId } : {};
+      const response = await apiClient.get('/projects', { params });
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      console.warn('API returned non-array for projects:', response.data);
+      return [];
+    } catch (error) {
+      console.error('Error fetching projects:', error);
+      return [];
+    }
   },
 
   get: async (id: string): Promise<MigrationProject> => {
@@ -32,9 +41,18 @@ export const projectsApi = {
   },
 
   search: async (name: string): Promise<MigrationProject[]> => {
-    const response = await apiClient.get('/projects/search', {
-      params: { name },
-    });
-    return response.data;
+    try {
+      const response = await apiClient.get('/projects/search', {
+        params: { name },
+      });
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      console.warn('API returned non-array for project search:', response.data);
+      return [];
+    } catch (error) {
+      console.error('Error searching projects:', error);
+      return [];
+    }
   },
 };

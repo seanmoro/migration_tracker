@@ -3,8 +3,17 @@ import { Customer } from '../types';
 
 export const customersApi = {
   list: async (): Promise<Customer[]> => {
-    const response = await apiClient.get('/customers');
-    return response.data;
+    try {
+      const response = await apiClient.get('/customers');
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      console.warn('API returned non-array for customers:', response.data);
+      return [];
+    } catch (error) {
+      console.error('Error fetching customers:', error);
+      return [];
+    }
   },
 
   get: async (id: string): Promise<Customer> => {
@@ -27,9 +36,18 @@ export const customersApi = {
   },
 
   search: async (name: string): Promise<Customer[]> => {
-    const response = await apiClient.get('/customers/search', {
-      params: { name },
-    });
-    return response.data;
+    try {
+      const response = await apiClient.get('/customers/search', {
+        params: { name },
+      });
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      console.warn('API returned non-array for customer search:', response.data);
+      return [];
+    } catch (error) {
+      console.error('Error searching customers:', error);
+      return [];
+    }
   },
 };
