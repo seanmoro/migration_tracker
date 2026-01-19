@@ -19,9 +19,26 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
-// Response interceptor for error handling
+// Response interceptor for error handling and data normalization
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Normalize array responses - ensure arrays are always arrays
+    if (response.data && typeof response.data === 'object' && !Array.isArray(response.data)) {
+      // If it's an object but we expect an array (based on endpoint), convert to array
+      const url = response.config.url || '';
+      if (url.includes('/active-phases') || 
+          url.includes('/phases-needing-attention') || 
+          url.includes('/active-phases-by-customer') ||
+          url.includes('/recent-activity')) {
+        // If response is not an array, wrap it or return empty array
+        if (!Array.isArray(response.data)) {
+          console.warn(`API returned non-array for ${url}:`, response.data);
+          response.data = [];
+        }
+      }
+    }
+    return response;
+  },
   (error) => {
     if (error.response?.status === 401) {
       // Handle unauthorized

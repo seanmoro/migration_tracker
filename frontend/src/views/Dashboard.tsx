@@ -18,20 +18,28 @@ export default function Dashboard() {
     queryFn: () => dashboardApi.getStats(),
   });
 
-  const { data: activePhases = [], isLoading: phasesLoading } = useQuery({
+  const { data: activePhases, isLoading: phasesLoading } = useQuery({
     queryKey: ['dashboard', 'active-phases'],
     queryFn: () => dashboardApi.getActivePhases(),
+    retry: 1,
   });
 
-  const { data: phasesByCustomer = [], isLoading: phasesByCustomerLoading } = useQuery({
+  const { data: phasesByCustomer, isLoading: phasesByCustomerLoading } = useQuery({
     queryKey: ['dashboard', 'active-phases-by-customer'],
     queryFn: () => dashboardApi.getActivePhasesByCustomer(),
+    retry: 1,
   });
 
-  const { data: phasesNeedingAttention = [], isLoading: attentionLoading } = useQuery({
+  const { data: phasesNeedingAttention, isLoading: attentionLoading } = useQuery({
     queryKey: ['dashboard', 'phases-needing-attention'],
     queryFn: () => dashboardApi.getPhasesNeedingAttention(),
+    retry: 1,
   });
+
+  // Normalize data to ensure arrays
+  const normalizedActivePhases = Array.isArray(activePhases) ? activePhases : [];
+  const normalizedPhasesByCustomer = Array.isArray(phasesByCustomer) ? phasesByCustomer : [];
+  const normalizedPhasesNeedingAttention = Array.isArray(phasesNeedingAttention) ? phasesNeedingAttention : [];
 
   const toggleCustomer = (customerId: string) => {
     const newExpanded = new Set(expandedCustomers);
@@ -124,13 +132,13 @@ export default function Dashboard() {
       </div>
 
       {/* Phases Needing Attention */}
-      {Array.isArray(phasesNeedingAttention) && phasesNeedingAttention.length > 0 && (
+      {normalizedPhasesNeedingAttention.length > 0 && (
         <div id="phases-needing-attention" className="card border-l-4 border-l-red-500">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-2">
               <AlertCircle className="w-5 h-5 text-red-600" />
               <h2 className="text-xl font-semibold text-gray-900">
-                Phases Needing Attention ({phasesNeedingAttention.length})
+                Phases Needing Attention ({normalizedPhasesNeedingAttention.length})
               </h2>
             </div>
           </div>
@@ -138,7 +146,7 @@ export default function Dashboard() {
             These phases have progress below 50% and may require review or intervention.
           </p>
           <div className="space-y-4">
-            {phasesNeedingAttention.map((phase) => (
+            {normalizedPhasesNeedingAttention.map((phase) => (
               <div
                 key={phase.phaseId}
                 className="border border-red-200 rounded-lg p-4 bg-red-50 hover:bg-red-100 transition-colors cursor-pointer"
@@ -182,9 +190,9 @@ export default function Dashboard() {
             Active Phases ({stats?.activeMigrations || 0})
           </h2>
         </div>
-        {Array.isArray(phasesByCustomer) && phasesByCustomer.length > 0 ? (
+        {normalizedPhasesByCustomer.length > 0 ? (
           <div className="space-y-2">
-            {phasesByCustomer.map((customer) => {
+            {normalizedPhasesByCustomer.map((customer) => {
               const isCustomerExpanded = expandedCustomers.has(customer.customerId);
               const projects = Array.isArray(customer.projects) ? customer.projects : [];
               const totalPhases = projects.reduce((sum, p) => {
@@ -291,10 +299,10 @@ export default function Dashboard() {
       </div>
 
       {/* Progress Chart */}
-      {Array.isArray(activePhases) && activePhases.length > 0 && (
+      {normalizedActivePhases.length > 0 && (
         <div className="card">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Progress Overview</h2>
-          <ProgressChart phases={activePhases} />
+          <ProgressChart phases={normalizedActivePhases} />
         </div>
       )}
     </div>
