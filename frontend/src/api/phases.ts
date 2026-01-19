@@ -20,6 +20,7 @@ export const phasesApi = {
     type: MigrationPhase['type'];
     source: string;
     target: string;
+    sourceTapePartition?: string;
     targetTapePartition?: string;
   }): Promise<MigrationPhase> => {
     const response = await apiClient.post('/phases', data);
@@ -42,7 +43,7 @@ export const phasesApi = {
     return response.data;
   },
 
-  getDefaultValues: async (projectId: string): Promise<{ source?: string; target?: string; targetTapePartition?: string }> => {
+  getDefaultValues: async (projectId: string): Promise<{ source?: string; target?: string; sourceTapePartition?: string; targetTapePartition?: string }> => {
     const response = await apiClient.get('/phases/defaults', {
       params: { projectId },
     });

@@ -87,16 +87,31 @@ public class PhaseService {
                 .orElse(""));
         }
         
-        // Find most common tape partition
-        Map<String, Integer> tapePartitionCounts = new HashMap<>();
+        // Find most common source tape partition
+        Map<String, Integer> sourceTapePartitionCounts = new HashMap<>();
         for (MigrationPhase phase : phases) {
-            if (phase.getTargetTapePartition() != null && !phase.getTargetTapePartition().isEmpty()) {
-                tapePartitionCounts.put(phase.getTargetTapePartition(), 
-                    tapePartitionCounts.getOrDefault(phase.getTargetTapePartition(), 0) + 1);
+            if (phase.getSourceTapePartition() != null && !phase.getSourceTapePartition().isEmpty()) {
+                sourceTapePartitionCounts.put(phase.getSourceTapePartition(), 
+                    sourceTapePartitionCounts.getOrDefault(phase.getSourceTapePartition(), 0) + 1);
             }
         }
-        if (!tapePartitionCounts.isEmpty()) {
-            defaults.put("targetTapePartition", tapePartitionCounts.entrySet().stream()
+        if (!sourceTapePartitionCounts.isEmpty()) {
+            defaults.put("sourceTapePartition", sourceTapePartitionCounts.entrySet().stream()
+                .max(Map.Entry.comparingByValue())
+                .map(Map.Entry::getKey)
+                .orElse(""));
+        }
+        
+        // Find most common target tape partition
+        Map<String, Integer> targetTapePartitionCounts = new HashMap<>();
+        for (MigrationPhase phase : phases) {
+            if (phase.getTargetTapePartition() != null && !phase.getTargetTapePartition().isEmpty()) {
+                targetTapePartitionCounts.put(phase.getTargetTapePartition(), 
+                    targetTapePartitionCounts.getOrDefault(phase.getTargetTapePartition(), 0) + 1);
+            }
+        }
+        if (!targetTapePartitionCounts.isEmpty()) {
+            defaults.put("targetTapePartition", targetTapePartitionCounts.entrySet().stream()
                 .max(Map.Entry.comparingByValue())
                 .map(Map.Entry::getKey)
                 .orElse(""));

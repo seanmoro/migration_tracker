@@ -24,7 +24,7 @@ export default function GatherData() {
   const toast = useToastContext();
 
   const [databaseType, setDatabaseType] = useState<'blackpearl' | 'rio' | null>(null);
-  const [defaultPhaseValues, setDefaultPhaseValues] = useState<{ source?: string; target?: string; targetTapePartition?: string }>({});
+  const [defaultPhaseValues, setDefaultPhaseValues] = useState<{ source?: string; target?: string; sourceTapePartition?: string; targetTapePartition?: string }>({});
 
   // Pre-fill from navigation state (from restore)
   useEffect(() => {
@@ -79,6 +79,7 @@ export default function GatherData() {
       setDefaultPhaseValues({
         source: storageDomains.suggestedSource || '',
         target: storageDomains.suggestedTarget || '',
+        sourceTapePartition: storageDomains.suggestedTapePartition || '',
         targetTapePartition: storageDomains.suggestedTapePartition || ''
       });
     } else if (databaseType) {
@@ -86,6 +87,7 @@ export default function GatherData() {
       setDefaultPhaseValues({
         source: databaseType === 'blackpearl' ? 'BlackPearl' : 'Rio',
         target: databaseType === 'blackpearl' ? 'BlackPearl' : 'Rio',
+        sourceTapePartition: '',
         targetTapePartition: ''
       });
     }
@@ -508,7 +510,8 @@ export default function GatherData() {
           projectId={selectedProject}
           defaultSource={defaultPhaseValues.source}
           defaultTarget={defaultPhaseValues.target}
-          defaultTapePartition={defaultPhaseValues.targetTapePartition}
+          defaultSourceTapePartition={defaultPhaseValues.sourceTapePartition}
+          defaultTargetTapePartition={defaultPhaseValues.targetTapePartition}
           storageDomains={storageDomains?.domains || []}
           tapePartitions={storageDomains?.tapePartitions || []}
           onClose={() => {

@@ -25,6 +25,7 @@ export interface MigrationPhase {
   target: string;
   createdAt: string;
   lastUpdated: string;
+  sourceTapePartition?: string;
   targetTapePartition?: string;
 }
 

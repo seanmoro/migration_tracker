@@ -6,6 +6,7 @@ public class CreatePhaseRequest {
     private String type;
     private String source;
     private String target;
+    private String sourceTapePartition;
     private String targetTapePartition;
 
     // Getters and Setters
@@ -47,6 +48,14 @@ public class CreatePhaseRequest {
 
     public void setTarget(String target) {
         this.target = target;
+    }
+
+    public String getSourceTapePartition() {
+        return sourceTapePartition;
+    }
+
+    public void setSourceTapePartition(String sourceTapePartition) {
+        this.sourceTapePartition = sourceTapePartition;
     }
 
     public String getTargetTapePartition() {

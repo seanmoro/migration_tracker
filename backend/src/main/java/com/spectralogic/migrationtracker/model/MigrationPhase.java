@@ -12,6 +12,7 @@ public class MigrationPhase {
     private String target;
     private LocalDate createdAt;
     private LocalDate lastUpdated;
+    private String sourceTapePartition;
     private String targetTapePartition;
 
     public MigrationPhase() {
@@ -83,6 +84,14 @@ public class MigrationPhase {
 
     public void setLastUpdated(LocalDate lastUpdated) {
         this.lastUpdated = lastUpdated;
+    }
+
+    public String getSourceTapePartition() {
+        return sourceTapePartition;
+    }
+
+    public void setSourceTapePartition(String sourceTapePartition) {
+        this.sourceTapePartition = sourceTapePartition;
     }
 
     public String getTargetTapePartition() {

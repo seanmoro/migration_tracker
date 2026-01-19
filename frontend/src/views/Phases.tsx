@@ -52,6 +52,7 @@ export default function Phases() {
         type: phase.type as MigrationPhase['type'],
         source: phase.source,
         target: phase.target,
+        sourceTapePartition: phase.sourceTapePartition,
         targetTapePartition: phase.targetTapePartition,
       };
       return phasesApi.create(duplicateData);
@@ -233,10 +234,20 @@ export default function Phases() {
                     </span>
                   </div>
 
-              {phase.targetTapePartition && (
-                <div className="mb-4">
-                  <span className="text-sm text-gray-600">Tape Partition: </span>
-                  <span className="text-sm font-medium">{phase.targetTapePartition}</span>
+              {(phase.sourceTapePartition || phase.targetTapePartition) && (
+                <div className="mb-4 space-y-1">
+                  {phase.sourceTapePartition && (
+                    <div>
+                      <span className="text-sm text-gray-600">Source Tape Partition: </span>
+                      <span className="text-sm font-medium">{phase.sourceTapePartition}</span>
+                    </div>
+                  )}
+                  {phase.targetTapePartition && (
+                    <div>
+                      <span className="text-sm text-gray-600">Target Tape Partition: </span>
+                      <span className="text-sm font-medium">{phase.targetTapePartition}</span>
+                    </div>
+                  )}
                 </div>
               )}
 

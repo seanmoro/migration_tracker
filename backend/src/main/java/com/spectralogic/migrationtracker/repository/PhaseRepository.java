@@ -35,6 +35,13 @@ public class PhaseRepository {
             phase.setCreatedAt(createdAtStr != null ? LocalDate.parse(createdAtStr) : LocalDate.now());
             String lastUpdatedStr = rs.getString("last_updated");
             phase.setLastUpdated(lastUpdatedStr != null ? LocalDate.parse(lastUpdatedStr) : LocalDate.now());
+            // Handle source_tape_partition (may not exist in older databases)
+            try {
+                phase.setSourceTapePartition(rs.getString("source_tape_partition"));
+            } catch (SQLException e) {
+                // Column doesn't exist yet, set to null
+                phase.setSourceTapePartition(null);
+            }
             phase.setTargetTapePartition(rs.getString("target_tape_partition"));
             return phase;
         }
@@ -67,10 +74,22 @@ public class PhaseRepository {
     }
 
     public MigrationPhase save(MigrationPhase phase) {
+        // Ensure source_tape_partition column exists (for existing databases)
+        try {
+            jdbcTemplate.query("SELECT source_tape_partition FROM migration_phase LIMIT 1", (rs) -> null);
+        } catch (Exception e) {
+            // Column doesn't exist, add it
+            try {
+                jdbcTemplate.execute("ALTER TABLE migration_phase ADD COLUMN source_tape_partition TEXT");
+            } catch (Exception ex) {
+                // Column might already exist or table doesn't exist, ignore
+            }
+        }
+        
         if (phase.getId() == null || findById(phase.getId()).isEmpty()) {
             // Insert
             jdbcTemplate.update(
-                "INSERT INTO migration_phase (id, name, type, migration_id, source, target, created_at, last_updated, target_tape_partition) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO migration_phase (id, name, type, migration_id, source, target, created_at, last_updated, source_tape_partition, target_tape_partition) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 phase.getId(),
                 phase.getName(),
                 phase.getType(),
@@ -79,18 +98,20 @@ public class PhaseRepository {
                 phase.getTarget(),
                 phase.getCreatedAt(),
                 phase.getLastUpdated(),
+                phase.getSourceTapePartition(),
                 phase.getTargetTapePartition()
             );
         } else {
             // Update
             phase.setLastUpdated(LocalDate.now());
             jdbcTemplate.update(
-                "UPDATE migration_phase SET name = ?, type = ?, source = ?, target = ?, last_updated = ?, target_tape_partition = ? WHERE id = ?",
+                "UPDATE migration_phase SET name = ?, type = ?, source = ?, target = ?, last_updated = ?, source_tape_partition = ?, target_tape_partition = ? WHERE id = ?",
                 phase.getName(),
                 phase.getType(),
                 phase.getSource(),
                 phase.getTarget(),
                 phase.getLastUpdated(),
+                phase.getSourceTapePartition(),
                 phase.getTargetTapePartition(),
                 phase.getId()
             );

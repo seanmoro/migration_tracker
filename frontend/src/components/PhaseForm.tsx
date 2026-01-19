@@ -11,7 +11,8 @@ interface PhaseFormProps {
   onClose: () => void;
   defaultSource?: string;
   defaultTarget?: string;
-  defaultTapePartition?: string;
+  defaultSourceTapePartition?: string;
+  defaultTargetTapePartition?: string;
   storageDomains?: string[];
   tapePartitions?: string[];
 }
@@ -22,12 +23,13 @@ const PHASE_TYPES: MigrationPhase['type'][] = [
   'RIO_CRUISE',
 ];
 
-export default function PhaseForm({ phase, projectId, onClose, defaultSource, defaultTarget, defaultTapePartition, storageDomains = [], tapePartitions = [] }: PhaseFormProps) {
+export default function PhaseForm({ phase, projectId, onClose, defaultSource, defaultTarget, defaultSourceTapePartition, defaultTargetTapePartition, storageDomains = [], tapePartitions = [] }: PhaseFormProps) {
   const [name, setName] = useState('');
   const [type, setType] = useState<MigrationPhase['type']>('IOM_BUCKET');
   const [source, setSource] = useState(defaultSource || '');
   const [target, setTarget] = useState(defaultTarget || '');
-  const [targetTapePartition, setTargetTapePartition] = useState(defaultTapePartition || '');
+  const [sourceTapePartition, setSourceTapePartition] = useState(defaultSourceTapePartition || '');
+  const [targetTapePartition, setTargetTapePartition] = useState(defaultTargetTapePartition || '');
   const queryClient = useQueryClient();
   const toast = useToastContext();
 
@@ -37,14 +39,16 @@ export default function PhaseForm({ phase, projectId, onClose, defaultSource, de
       setType(phase.type);
       setSource(phase.source);
       setTarget(phase.target);
+      setSourceTapePartition(phase.sourceTapePartition || '');
       setTargetTapePartition(phase.targetTapePartition || '');
     } else {
       // For new phases, use defaults if provided
       if (defaultSource) setSource(defaultSource);
       if (defaultTarget) setTarget(defaultTarget);
-      if (defaultTapePartition) setTargetTapePartition(defaultTapePartition);
+      if (defaultSourceTapePartition) setSourceTapePartition(defaultSourceTapePartition);
+      if (defaultTargetTapePartition) setTargetTapePartition(defaultTargetTapePartition);
     }
-  }, [phase, defaultSource, defaultTarget, defaultTapePartition]);
+  }, [phase, defaultSource, defaultTarget, defaultSourceTapePartition, defaultTargetTapePartition]);
 
   const mutation = useMutation({
     mutationFn: (data: {
@@ -53,6 +57,7 @@ export default function PhaseForm({ phase, projectId, onClose, defaultSource, de
       type: MigrationPhase['type'];
       source: string;
       target: string;
+      sourceTapePartition?: string;
       targetTapePartition?: string;
     }) =>
       phase
@@ -76,6 +81,7 @@ export default function PhaseForm({ phase, projectId, onClose, defaultSource, de
       type,
       source,
       target,
+      sourceTapePartition: sourceTapePartition || undefined,
       targetTapePartition: targetTapePartition || undefined,
     });
   };
@@ -180,7 +186,29 @@ export default function PhaseForm({ phase, projectId, onClose, defaultSource, de
           </div>
 
           <div>
-            <label className="label">Tape Partition (Optional)</label>
+            <label className="label">Source Tape Partition (Optional)</label>
+            <select
+              value={sourceTapePartition}
+              onChange={(e) => setSourceTapePartition(e.target.value)}
+              className="input"
+            >
+              <option value="">-- No tape partition --</option>
+              {tapePartitions.length > 0 ? (
+                tapePartitions.map((partition) => (
+                  <option key={partition} value={partition}>
+                    {partition}
+                  </option>
+                ))
+              ) : (
+                <option value="" disabled>
+                  No tape partitions found
+                </option>
+              )}
+            </select>
+          </div>
+
+          <div>
+            <label className="label">Target Tape Partition (Optional)</label>
             <select
               value={targetTapePartition}
               onChange={(e) => setTargetTapePartition(e.target.value)}
