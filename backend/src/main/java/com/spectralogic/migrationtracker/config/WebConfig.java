@@ -42,9 +42,14 @@ public class WebConfig implements WebMvcConfigurer {
         }
         
         if (frontendPath != null) {
-            // Serve static files from frontend/dist
+            // First, serve static assets explicitly (assets, images, etc.)
+            // This ensures static files are served correctly
+            registry.addResourceHandler("/assets/**", "/*.js", "/*.css", "/*.ico", "/*.svg", "/*.png", "/*.jpg", "/*.woff", "/*.woff2")
+                    .addResourceLocations("file:" + frontendPath + "/")
+                    .resourceChain(false); // No chain for static assets - serve directly
+            
+            // Then, handle all other routes with SPA fallback
             // REST controllers have higher precedence and will handle /api/** routes first
-            // This handler catches everything else and serves static files or falls back to index.html
             registry.addResourceHandler("/**")
                     .addResourceLocations("file:" + frontendPath + "/")
                     .resourceChain(true)
@@ -52,17 +57,19 @@ public class WebConfig implements WebMvcConfigurer {
                         @Override
                         protected Resource getResource(String resourcePath, Resource location) throws IOException {
                             // Never handle API routes - REST controllers handle those with higher precedence
-                            // This check is a safety net in case the request somehow reaches here
                             if (resourcePath.startsWith("api/") || resourcePath.startsWith("/api/")) {
+                                logger.debug("Skipping API route in resource handler: {}", resourcePath);
                                 return null; // Return null to let Spring try other handlers/controllers
                             }
                             
                             Resource requestedResource = location.createRelative(resourcePath);
                             // If the requested resource exists, return it
                             if (requestedResource.exists() && requestedResource.isReadable()) {
+                                logger.debug("Serving static resource: {}", resourcePath);
                                 return requestedResource;
                             }
                             // Fallback to index.html for React Router (only for non-API routes)
+                            logger.debug("Resource not found, falling back to index.html for: {}", resourcePath);
                             return location.createRelative("index.html");
                         }
                     });
