@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/phases")
+@RequestMapping("/api/phases")
 public class PhaseController {
 
     private final PhaseService service;

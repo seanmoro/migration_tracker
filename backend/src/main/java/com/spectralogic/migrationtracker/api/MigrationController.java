@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/migration")
+@RequestMapping("/api/migration")
 public class MigrationController {
 
     private final MigrationService service;

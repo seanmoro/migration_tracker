@@ -43,37 +43,19 @@ public class WebConfig implements WebMvcConfigurer {
         
         if (frontendPath != null) {
             // Serve static files from frontend/dist
-            // Exclude /api/** from static resource handling - REST controllers handle those
-            // Use a more specific pattern that excludes API routes
-            registry.addResourceHandler(
-                    "/assets/**",
-                    "/*.js",
-                    "/*.css",
-                    "/*.html",
-                    "/*.ico",
-                    "/*.svg",
-                    "/*.png",
-                    "/*.jpg",
-                    "/*.jpeg",
-                    "/*.gif",
-                    "/*.woff",
-                    "/*.woff2",
-                    "/*.ttf",
-                    "/*.eot"
-            )
-                    .addResourceLocations("file:" + frontendPath + "/")
-                    .resourceChain(true);
-            
-            // Add SPA fallback for all other routes (except /api/**)
+            // Set order to Integer.MAX_VALUE to ensure REST controllers are checked first
+            // REST controllers have higher precedence and will handle /api/** routes first
+            // This handler catches everything else and serves static files or falls back to index.html
             registry.addResourceHandler("/**")
                     .addResourceLocations("file:" + frontendPath + "/")
                     .resourceChain(true)
                     .addResolver(new PathResourceResolver() {
                         @Override
                         protected Resource getResource(String resourcePath, Resource location) throws IOException {
-                            // Never handle API routes - let REST controllers handle them
+                            // Never handle API routes - REST controllers handle those with higher precedence
+                            // This check is a safety net in case the request somehow reaches here
                             if (resourcePath.startsWith("api/") || resourcePath.startsWith("/api/")) {
-                                return null; // Return null to indicate this resolver can't handle it
+                                return null; // Return null to let Spring try other handlers/controllers
                             }
                             
                             Resource requestedResource = location.createRelative(resourcePath);
@@ -84,7 +66,8 @@ public class WebConfig implements WebMvcConfigurer {
                             // Fallback to index.html for React Router (only for non-API routes)
                             return location.createRelative("index.html");
                         }
-                    });
+                    })
+                    .setOrder(Integer.MAX_VALUE); // Lowest priority - check controllers first
             logger.info("Configured static file serving from: {} with SPA fallback (excluding /api/**)", frontendPath);
         } else {
             logger.warn("Frontend dist directory not found! Static files will not be served.");
@@ -92,9 +75,5 @@ public class WebConfig implements WebMvcConfigurer {
         }
     }
 
-    @Override
-    public void addViewControllers(ViewControllerRegistry registry) {
-        // Redirect root to index.html for SPA routing
-        registry.addViewController("/").setViewName("forward:/index.html");
-    }
+    // Removed addViewControllers - the resource handler with SPA fallback handles root route
 }
