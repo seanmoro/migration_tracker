@@ -13,10 +13,19 @@ export const migrationApi = {
   },
 
   getData: async (phaseId: string): Promise<MigrationData[]> => {
-    const response = await apiClient.get(`/migration/data`, {
-      params: { phaseId },
-    });
-    return response.data;
+    try {
+      const response = await apiClient.get(`/migration/data`, {
+        params: { phaseId },
+      });
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      console.warn('API returned non-array for migration data:', response.data);
+      return [];
+    } catch (error) {
+      console.error('Error fetching migration data:', error);
+      return [];
+    }
   },
 
   getBuckets: async (source?: 'blackpearl' | 'rio'): Promise<Bucket[]> => {
