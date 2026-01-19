@@ -111,12 +111,21 @@ public class DatabaseConfigService {
                     if (line.isEmpty() || line.startsWith("#")) {
                         continue;
                     }
+                    // Handle "export KEY=VALUE" format
+                    String key;
+                    String value;
+                    
+                    // Check if line starts with "export"
+                    if (line.startsWith("export ")) {
+                        line = line.substring(7).trim(); // Remove "export "
+                    }
+                    
                     // Parse KEY=VALUE format
                     int eqIndex = line.indexOf('=');
                     if (eqIndex > 0) {
-                        String key = line.substring(0, eqIndex).trim();
-                        String value = line.substring(eqIndex + 1).trim();
-                        // Remove quotes if present
+                        key = line.substring(0, eqIndex).trim();
+                        value = line.substring(eqIndex + 1).trim();
+                        // Remove quotes if present (but remember we need to add them back when saving)
                         if (value.startsWith("\"") && value.endsWith("\"")) {
                             value = value.substring(1, value.length() - 1);
                         } else if (value.startsWith("'") && value.endsWith("'")) {
@@ -154,12 +163,31 @@ public class DatabaseConfigService {
             writeSection(writer, "BlackPearl Database", props, "MT_BLACKPEARL");
             writeSection(writer, "Rio Database", props, "MT_RIO");
             
-            // Write other properties
+            // Write other properties (like JAVA_OPTS, APP_DIR, etc.)
+            boolean hasOtherProps = false;
             for (String key : props.stringPropertyNames()) {
                 if (!key.startsWith("MT_BLACKPEARL") && !key.startsWith("MT_RIO")) {
-                    writer.write(key + "=" + props.getProperty(key));
-                    writer.newLine();
+                    hasOtherProps = true;
+                    break;
                 }
+            }
+            
+            if (hasOtherProps) {
+                writer.write("# Other Configuration");
+                writer.newLine();
+                for (String key : props.stringPropertyNames()) {
+                    if (!key.startsWith("MT_BLACKPEARL") && !key.startsWith("MT_RIO")) {
+                        String value = props.getProperty(key);
+                        // Quote values that contain spaces or special characters (like JAVA_OPTS)
+                        if (value != null && (value.contains(" ") || value.contains("-") || value.contains("+"))) {
+                            writer.write("export " + key + "=\"" + value + "\"");
+                        } else {
+                            writer.write("export " + key + "=" + value);
+                        }
+                        writer.newLine();
+                    }
+                }
+                writer.newLine();
             }
         }
         
@@ -178,22 +206,25 @@ public class DatabaseConfigService {
             }
         }
         
-        if (hasSection) {
-            writer.write("# " + sectionName);
-            writer.newLine();
-            for (String key : props.stringPropertyNames()) {
-                if (key.startsWith(prefix)) {
-                    String value = props.getProperty(key);
-                    // Quote values that might contain special characters
-                    if (value.contains(" ") || value.isEmpty()) {
-                        value = "\"" + value + "\"";
-                    }
-                    writer.write("export " + key + "=" + value);
-                    writer.newLine();
-                }
-            }
-            writer.newLine();
+        if (!hasSection) {
+            return;
         }
+        
+        writer.write("# " + sectionName);
+        writer.newLine();
+        for (String key : props.stringPropertyNames()) {
+            if (key.startsWith(prefix)) {
+                String value = props.getProperty(key);
+                // Quote values that contain spaces or special characters
+                if (value != null && (value.contains(" ") || value.contains("-") || value.contains("+"))) {
+                    writer.write("export " + key + "=\"" + value + "\"");
+                } else {
+                    writer.write("export " + key + "=" + value);
+                }
+                writer.newLine();
+            }
+        }
+        writer.newLine();
     }
 
     /**
