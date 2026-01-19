@@ -2,6 +2,7 @@ package com.spectralogic.migrationtracker.api;
 
 import com.spectralogic.migrationtracker.model.MigrationPhase;
 import com.spectralogic.migrationtracker.service.PhaseService;
+import com.spectralogic.migrationtracker.service.StorageDomainService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -14,9 +15,11 @@ import java.util.Map;
 public class PhaseController {
 
     private final PhaseService service;
+    private final StorageDomainService storageDomainService;
 
-    public PhaseController(PhaseService service) {
+    public PhaseController(PhaseService service, StorageDomainService storageDomainService) {
         this.service = service;
+        this.storageDomainService = storageDomainService;
     }
 
     @GetMapping
@@ -55,5 +58,12 @@ public class PhaseController {
     @GetMapping("/defaults")
     public ResponseEntity<Map<String, String>> getDefaultValues(@RequestParam String projectId) {
         return ResponseEntity.ok(service.getDefaultValues(projectId));
+    }
+
+    @GetMapping("/storage-domains")
+    public ResponseEntity<StorageDomainService.StorageDomains> getStorageDomains(
+            @RequestParam String customerId,
+            @RequestParam String databaseType) {
+        return ResponseEntity.ok(storageDomainService.getStorageDomains(customerId, databaseType));
     }
 }

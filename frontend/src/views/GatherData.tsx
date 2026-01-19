@@ -66,25 +66,30 @@ export default function GatherData() {
     enabled: !!selectedProject,
   });
 
-  // Fetch default phase values when project is selected
-  const { data: phaseDefaults = {} } = useQuery({
-    queryKey: ['phase-defaults', selectedProject],
-    queryFn: () => phasesApi.getDefaultValues(selectedProject),
-    enabled: !!selectedProject,
+  // Fetch storage domains from restored PostgreSQL database
+  const { data: storageDomains } = useQuery({
+    queryKey: ['storage-domains', selectedCustomerId, databaseType],
+    queryFn: () => phasesApi.getStorageDomains(selectedCustomerId, databaseType || 'blackpearl'),
+    enabled: !!selectedCustomerId && !!databaseType,
   });
 
-  // Update default values when phaseDefaults or databaseType changes
+  // Update default values when storage domains are fetched
   useEffect(() => {
-    if (selectedProject) {
-      const defaults: { source?: string; target?: string; targetTapePartition?: string } = {
-        ...phaseDefaults,
-        source: phaseDefaults.source || (databaseType === 'blackpearl' ? 'BlackPearl' : databaseType === 'rio' ? 'Rio' : ''),
-        target: phaseDefaults.target || '',
-        targetTapePartition: phaseDefaults.targetTapePartition || ''
-      };
-      setDefaultPhaseValues(defaults);
+    if (storageDomains) {
+      setDefaultPhaseValues({
+        source: storageDomains.suggestedSource || '',
+        target: storageDomains.suggestedTarget || '',
+        targetTapePartition: storageDomains.suggestedTapePartition || ''
+      });
+    } else if (databaseType) {
+      // Fallback to database type if no storage domains found
+      setDefaultPhaseValues({
+        source: databaseType === 'blackpearl' ? 'BlackPearl' : 'Rio',
+        target: databaseType === 'blackpearl' ? 'BlackPearl' : 'Rio',
+        targetTapePartition: ''
+      });
     }
-  }, [phaseDefaults, databaseType, selectedProject]);
+  }, [storageDomains, databaseType]);
 
   // Handle "Create New Phase" option
   const handlePhaseChange = (value: string) => {

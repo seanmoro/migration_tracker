@@ -48,4 +48,16 @@ export const phasesApi = {
     });
     return response.data || {};
   },
+
+  getStorageDomains: async (customerId: string, databaseType: 'blackpearl' | 'rio'): Promise<{
+    domains: string[];
+    suggestedSource?: string;
+    suggestedTarget?: string;
+    suggestedTapePartition?: string;
+  }> => {
+    const response = await apiClient.get('/phases/storage-domains', {
+      params: { customerId, databaseType },
+    });
+    return response.data || { domains: [] };
+  },
 };
