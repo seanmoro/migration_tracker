@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/phases")
@@ -49,5 +50,10 @@ public class PhaseController {
     public ResponseEntity<Void> deletePhase(@PathVariable String id) {
         service.delete(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/defaults")
+    public ResponseEntity<Map<String, String>> getDefaultValues(@RequestParam String projectId) {
+        return ResponseEntity.ok(service.getDefaultValues(projectId));
     }
 }

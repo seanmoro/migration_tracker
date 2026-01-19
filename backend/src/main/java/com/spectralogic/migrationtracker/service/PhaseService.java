@@ -4,7 +4,9 @@ import com.spectralogic.migrationtracker.model.MigrationPhase;
 import com.spectralogic.migrationtracker.repository.PhaseRepository;
 import org.springframework.stereotype.Service;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class PhaseService {
@@ -41,5 +43,65 @@ public class PhaseService {
 
     public void delete(String id) {
         repository.deleteById(id);
+    }
+
+    /**
+     * Get default phase values based on existing phases in the project
+     * Returns the most common source, target, and tape partition from existing phases
+     */
+    public Map<String, String> getDefaultValues(String projectId) {
+        Map<String, String> defaults = new HashMap<>();
+        
+        List<MigrationPhase> phases = repository.findByProjectId(projectId);
+        
+        if (phases.isEmpty()) {
+            // No existing phases, return empty defaults
+            return defaults;
+        }
+        
+        // Find most common source
+        Map<String, Integer> sourceCounts = new HashMap<>();
+        for (MigrationPhase phase : phases) {
+            if (phase.getSource() != null && !phase.getSource().isEmpty()) {
+                sourceCounts.put(phase.getSource(), sourceCounts.getOrDefault(phase.getSource(), 0) + 1);
+            }
+        }
+        if (!sourceCounts.isEmpty()) {
+            defaults.put("source", sourceCounts.entrySet().stream()
+                .max(Map.Entry.comparingByValue())
+                .map(Map.Entry::getKey)
+                .orElse(""));
+        }
+        
+        // Find most common target
+        Map<String, Integer> targetCounts = new HashMap<>();
+        for (MigrationPhase phase : phases) {
+            if (phase.getTarget() != null && !phase.getTarget().isEmpty()) {
+                targetCounts.put(phase.getTarget(), targetCounts.getOrDefault(phase.getTarget(), 0) + 1);
+            }
+        }
+        if (!targetCounts.isEmpty()) {
+            defaults.put("target", targetCounts.entrySet().stream()
+                .max(Map.Entry.comparingByValue())
+                .map(Map.Entry::getKey)
+                .orElse(""));
+        }
+        
+        // Find most common tape partition
+        Map<String, Integer> tapePartitionCounts = new HashMap<>();
+        for (MigrationPhase phase : phases) {
+            if (phase.getTargetTapePartition() != null && !phase.getTargetTapePartition().isEmpty()) {
+                tapePartitionCounts.put(phase.getTargetTapePartition(), 
+                    tapePartitionCounts.getOrDefault(phase.getTargetTapePartition(), 0) + 1);
+            }
+        }
+        if (!tapePartitionCounts.isEmpty()) {
+            defaults.put("targetTapePartition", tapePartitionCounts.entrySet().stream()
+                .max(Map.Entry.comparingByValue())
+                .map(Map.Entry::getKey)
+                .orElse(""));
+        }
+        
+        return defaults;
     }
 }

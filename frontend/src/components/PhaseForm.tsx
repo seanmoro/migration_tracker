@@ -9,6 +9,9 @@ interface PhaseFormProps {
   phase?: MigrationPhase | null;
   projectId: string;
   onClose: () => void;
+  defaultSource?: string;
+  defaultTarget?: string;
+  defaultTapePartition?: string;
 }
 
 const PHASE_TYPES: MigrationPhase['type'][] = [
@@ -17,12 +20,12 @@ const PHASE_TYPES: MigrationPhase['type'][] = [
   'RIO_CRUISE',
 ];
 
-export default function PhaseForm({ phase, projectId, onClose }: PhaseFormProps) {
+export default function PhaseForm({ phase, projectId, onClose, defaultSource, defaultTarget, defaultTapePartition }: PhaseFormProps) {
   const [name, setName] = useState('');
   const [type, setType] = useState<MigrationPhase['type']>('IOM_BUCKET');
-  const [source, setSource] = useState('');
-  const [target, setTarget] = useState('');
-  const [targetTapePartition, setTargetTapePartition] = useState('');
+  const [source, setSource] = useState(defaultSource || '');
+  const [target, setTarget] = useState(defaultTarget || '');
+  const [targetTapePartition, setTargetTapePartition] = useState(defaultTapePartition || '');
   const queryClient = useQueryClient();
   const toast = useToastContext();
 
@@ -33,8 +36,13 @@ export default function PhaseForm({ phase, projectId, onClose }: PhaseFormProps)
       setSource(phase.source);
       setTarget(phase.target);
       setTargetTapePartition(phase.targetTapePartition || '');
+    } else {
+      // For new phases, use defaults if provided
+      if (defaultSource) setSource(defaultSource);
+      if (defaultTarget) setTarget(defaultTarget);
+      if (defaultTapePartition) setTargetTapePartition(defaultTapePartition);
     }
-  }, [phase]);
+  }, [phase, defaultSource, defaultTarget, defaultTapePartition]);
 
   const mutation = useMutation({
     mutationFn: (data: {

@@ -41,4 +41,11 @@ export const phasesApi = {
     });
     return response.data;
   },
+
+  getDefaultValues: async (projectId: string): Promise<{ source?: string; target?: string; targetTapePartition?: string }> => {
+    const response = await apiClient.get('/phases/defaults', {
+      params: { projectId },
+    });
+    return response.data || {};
+  },
 };

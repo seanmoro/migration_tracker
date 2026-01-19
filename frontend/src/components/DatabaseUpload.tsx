@@ -81,11 +81,13 @@ export default function DatabaseUpload({ onSuccess, databaseType = 'tracker' }: 
         }
         // For PostgreSQL restore, navigate to Gather Data page with customer pre-selected
         if ((databaseType === 'postgres' || databaseType === 'blackpearl' || databaseType === 'rio') && selectedCustomerId) {
-          // Find the first project for this customer to pre-select
-          // Navigate to Gather Data with customer ID in state
+          // Navigate to Gather Data with customer ID and database type in state
           setTimeout(() => {
             navigate('/gather-data', {
-              state: { customerId: selectedCustomerId }
+              state: { 
+                customerId: selectedCustomerId,
+                databaseType: selectedDbType
+              }
             });
           }, 1500);
         }

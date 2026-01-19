@@ -23,10 +23,13 @@ export default function GatherData() {
   const queryClient = useQueryClient();
   const toast = useToastContext();
 
+  const [databaseType, setDatabaseType] = useState<'blackpearl' | 'rio' | null>(null);
+  const [defaultPhaseValues, setDefaultPhaseValues] = useState<{ source?: string; target?: string; targetTapePartition?: string }>({});
+
   // Pre-fill from navigation state (from restore)
   useEffect(() => {
     if (location.state) {
-      const state = location.state as { customerId?: string; projectId?: string; phaseId?: string };
+      const state = location.state as { customerId?: string; projectId?: string; phaseId?: string; databaseType?: 'blackpearl' | 'rio' };
       if (state.customerId) {
         setSelectedCustomerId(state.customerId);
       }
@@ -35,6 +38,14 @@ export default function GatherData() {
       }
       if (state.phaseId) {
         setSelectedPhase(state.phaseId);
+      }
+      if (state.databaseType) {
+        setDatabaseType(state.databaseType);
+        // Set default source based on database type
+        setDefaultPhaseValues(prev => ({
+          ...prev,
+          source: state.databaseType === 'blackpearl' ? 'BlackPearl' : 'Rio'
+        }));
       }
     }
   }, [location.state]);
@@ -54,6 +65,26 @@ export default function GatherData() {
     queryFn: () => phasesApi.list(selectedProject),
     enabled: !!selectedProject,
   });
+
+  // Fetch default phase values when project is selected
+  const { data: phaseDefaults = {} } = useQuery({
+    queryKey: ['phase-defaults', selectedProject],
+    queryFn: () => phasesApi.getDefaultValues(selectedProject),
+    enabled: !!selectedProject,
+  });
+
+  // Update default values when phaseDefaults or databaseType changes
+  useEffect(() => {
+    if (selectedProject) {
+      const defaults: { source?: string; target?: string; targetTapePartition?: string } = {
+        ...phaseDefaults,
+        source: phaseDefaults.source || (databaseType === 'blackpearl' ? 'BlackPearl' : databaseType === 'rio' ? 'Rio' : ''),
+        target: phaseDefaults.target || '',
+        targetTapePartition: phaseDefaults.targetTapePartition || ''
+      };
+      setDefaultPhaseValues(defaults);
+    }
+  }, [phaseDefaults, databaseType, selectedProject]);
 
   // Handle "Create New Phase" option
   const handlePhaseChange = (value: string) => {
@@ -470,10 +501,14 @@ export default function GatherData() {
       {showPhaseForm && selectedProject && (
         <PhaseForm
           projectId={selectedProject}
+          defaultSource={defaultPhaseValues.source}
+          defaultTarget={defaultPhaseValues.target}
+          defaultTapePartition={defaultPhaseValues.targetTapePartition}
           onClose={() => {
             setShowPhaseForm(false);
             // Refresh phases list after creating
             queryClient.invalidateQueries({ queryKey: ['phases', selectedProject] });
+            queryClient.invalidateQueries({ queryKey: ['phase-defaults', selectedProject] });
           }}
         />
       )}
