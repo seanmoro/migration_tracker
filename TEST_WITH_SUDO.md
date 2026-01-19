@@ -9,19 +9,20 @@ cd /home/seans/new_tracker
 # 2. Pull latest code
 git pull origin main
 
-# 3. Rebuild backend
+# 3. Rebuild backend (NO sudo needed for build)
 cd backend
 mvn clean package -DskipTests
 cd ..
 
 # 4. Stop existing application (if running)
-pkill -f "migration-tracker-api.*jar" || true
+# Use sudo if the process was started with sudo
+sudo pkill -f "migration-tracker-api.*jar" || pkill -f "migration-tracker-api.*jar" || true
 sleep 2
 
 # 5. Load environment variables
 source .env
 
-# 6. Run application with sudo
+# 6. Run application with sudo (sudo needed for port 80 and PostgreSQL permissions)
 sudo -E nohup java -jar backend/target/migration-tracker-api-1.0.0.jar \
     --server.port=80 \
     --server.address=0.0.0.0 \
