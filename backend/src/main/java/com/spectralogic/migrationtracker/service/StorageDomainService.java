@@ -93,17 +93,31 @@ public class StorageDomainService {
             
             Set<String> domains = new HashSet<>();
             
-            // Test database connection first
+            // Test database connection first - try customer-specific, fallback to generic
+            String actualDatabaseName = databaseName;
             try {
                 jdbc.query("SELECT 1", (rs, rowNum) -> rs.getInt(1));
+                logger.debug("Successfully connected to customer-specific database: {}", databaseName);
             } catch (Exception e) {
-                logger.error("Cannot connect to database {}: {}. Please ensure the database has been restored.", databaseName, e.getMessage());
-                // Return empty result with defaults
-                StorageDomains result = new StorageDomains();
-                result.setDomains(new ArrayList<>());
-                result.setSuggestedSource(databaseType.equalsIgnoreCase("blackpearl") ? "BlackPearl" : "Rio");
-                result.setSuggestedTarget(databaseType.equalsIgnoreCase("blackpearl") ? "BlackPearl" : "Rio");
-                return result;
+                logger.warn("Cannot connect to customer-specific database {}: {}. Trying generic database as fallback.", databaseName, e.getMessage());
+                // Fallback to generic database (for data directory restores)
+                String genericDatabaseName = databaseType.equalsIgnoreCase("blackpearl") ? "tapesystem" : "rio_db";
+                try {
+                    dataSource.setUrl(String.format("jdbc:postgresql://%s:%d/%s", host, port, genericDatabaseName));
+                    jdbc = new JdbcTemplate(dataSource);
+                    jdbc.query("SELECT 1", (rs, rowNum) -> rs.getInt(1));
+                    actualDatabaseName = genericDatabaseName;
+                    logger.info("Successfully connected to generic database: {}. Using this for storage domain queries.", genericDatabaseName);
+                } catch (Exception e2) {
+                    logger.error("Cannot connect to either customer-specific database {} or generic database {}: {}. Please ensure the database has been restored.", 
+                        databaseName, genericDatabaseName, e2.getMessage());
+                    // Return empty result with defaults
+                    StorageDomains result = new StorageDomains();
+                    result.setDomains(new ArrayList<>());
+                    result.setSuggestedSource(databaseType.equalsIgnoreCase("blackpearl") ? "BlackPearl" : "Rio");
+                    result.setSuggestedTarget(databaseType.equalsIgnoreCase("blackpearl") ? "BlackPearl" : "Rio");
+                    return result;
+                }
             }
             
             // Try multiple table/column combinations to find storage domains
@@ -210,11 +224,11 @@ public class StorageDomainService {
             List<String> domainList = new ArrayList<>(domains);
             domainList.sort(String::compareToIgnoreCase);
             
-            logger.info("Found {} unique storage domains from {} database", domainList.size(), databaseType);
+            logger.info("Found {} unique storage domains from {} database ({})", domainList.size(), databaseType, actualDatabaseName);
             
             // Log what we found for debugging
             if (domainList.isEmpty()) {
-                logger.warn("No storage domains found in database {}. Attempted to query tables: storage_domains, domains, brokers, and columns containing 'domain' or 'broker'", databaseName);
+                logger.warn("No storage domains found in database {}. Attempted to query tables: storage_domains, domains, brokers, and columns containing 'domain' or 'broker'", actualDatabaseName);
                 
                 // Try to list all tables for debugging
                 try {
@@ -222,7 +236,7 @@ public class StorageDomainService {
                         "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name",
                         (rs, rowNum) -> rs.getString("table_name")
                     );
-                    logger.info("Available tables in database {}: {}", databaseName, allTables);
+                    logger.info("Available tables in database {}: {}", actualDatabaseName, allTables);
                     
                     // List all columns that might contain domain info
                     List<Map<String, String>> domainColumns = jdbc.query(
