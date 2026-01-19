@@ -93,6 +93,19 @@ public class StorageDomainService {
             
             Set<String> domains = new HashSet<>();
             
+            // Test database connection first
+            try {
+                jdbc.query("SELECT 1", (rs, rowNum) -> rs.getInt(1));
+            } catch (Exception e) {
+                logger.error("Cannot connect to database {}: {}. Please ensure the database has been restored.", databaseName, e.getMessage());
+                // Return empty result with defaults
+                StorageDomains result = new StorageDomains();
+                result.setDomains(new ArrayList<>());
+                result.setSuggestedSource(databaseType.equalsIgnoreCase("blackpearl") ? "BlackPearl" : "Rio");
+                result.setSuggestedTarget(databaseType.equalsIgnoreCase("blackpearl") ? "BlackPearl" : "Rio");
+                return result;
+            }
+            
             // Try multiple table/column combinations to find storage domains
             // Common patterns:
             // 1. storage_domains table with name column
