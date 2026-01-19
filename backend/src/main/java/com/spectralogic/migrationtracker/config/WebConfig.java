@@ -43,10 +43,8 @@ public class WebConfig implements WebMvcConfigurer {
         
         if (frontendPath != null) {
             // Serve static files from frontend/dist
-            // Set order to Integer.MAX_VALUE to ensure REST controllers are checked first
             // REST controllers have higher precedence and will handle /api/** routes first
             // This handler catches everything else and serves static files or falls back to index.html
-            registry.setOrder(Integer.MAX_VALUE); // Set order on registry - lowest priority
             registry.addResourceHandler("/**")
                     .addResourceLocations("file:" + frontendPath + "/")
                     .resourceChain(true)
