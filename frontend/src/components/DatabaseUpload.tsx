@@ -1,5 +1,8 @@
 import { useState, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { databaseApi, RestoreResponse } from '../api/database';
+import { customersApi } from '../api/customers';
 import { useToastContext } from '../contexts/ToastContext';
 
 interface DatabaseUploadProps {
@@ -8,12 +11,21 @@ interface DatabaseUploadProps {
 }
 
 export default function DatabaseUpload({ onSuccess, databaseType = 'tracker' }: DatabaseUploadProps) {
+  const navigate = useNavigate();
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [result, setResult] = useState<RestoreResponse | null>(null);
   const [selectedDbType, setSelectedDbType] = useState<'blackpearl' | 'rio'>(databaseType === 'blackpearl' ? 'blackpearl' : databaseType === 'rio' ? 'rio' : 'blackpearl');
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { showToast } = useToastContext();
+
+  // Fetch customers for PostgreSQL restore
+  const { data: customers = [] } = useQuery({
+    queryKey: ['customers'],
+    queryFn: () => customersApi.list(),
+    enabled: databaseType === 'postgres' || databaseType === 'blackpearl' || databaseType === 'rio',
+  });
 
   const handleFile = async (file: File) => {
     // Validate file type based on database type
@@ -51,7 +63,13 @@ export default function DatabaseUpload({ onSuccess, databaseType = 'tracker' }: 
       if (databaseType === 'tracker') {
         response = await databaseApi.restoreDatabase(file);
       } else {
-        response = await databaseApi.restorePostgreSQLDatabase(file, selectedDbType);
+        // For PostgreSQL restore, require customer selection
+        if (!selectedCustomerId) {
+          showToast('Please select a customer', 'error');
+          setUploading(false);
+          return;
+        }
+        response = await databaseApi.restorePostgreSQLDatabase(file, selectedDbType, selectedCustomerId);
       }
       
       setResult(response);
@@ -61,8 +79,16 @@ export default function DatabaseUpload({ onSuccess, databaseType = 'tracker' }: 
         if (onSuccess) {
           onSuccess();
         }
-        // Don't reload - just stay on the same page
-        // The success message is already shown via toast
+        // For PostgreSQL restore, navigate to Gather Data page with customer pre-selected
+        if ((databaseType === 'postgres' || databaseType === 'blackpearl' || databaseType === 'rio') && selectedCustomerId) {
+          // Find the first project for this customer to pre-select
+          // Navigate to Gather Data with customer ID in state
+          setTimeout(() => {
+            navigate('/gather-data', {
+              state: { customerId: selectedCustomerId }
+            });
+          }, 1500);
+        }
       } else {
         showToast(response.error || 'Failed to restore database', 'error');
       }
@@ -137,20 +163,44 @@ export default function DatabaseUpload({ onSuccess, databaseType = 'tracker' }: 
         </p>
 
         {(databaseType === 'blackpearl' || databaseType === 'rio' || databaseType === 'postgres') && (
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Database Type
-            </label>
-            <select
-              value={selectedDbType}
-              onChange={(e) => setSelectedDbType(e.target.value as 'blackpearl' | 'rio')}
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              disabled={uploading}
-            >
-              <option value="blackpearl">BlackPearl</option>
-              <option value="rio">Rio</option>
-            </select>
-          </div>
+          <>
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Customer <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={selectedCustomerId}
+                onChange={(e) => setSelectedCustomerId(e.target.value)}
+                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                disabled={uploading}
+                required
+              >
+                <option value="">Select a customer</option>
+                {customers.map((customer) => (
+                  <option key={customer.id} value={customer.id}>
+                    {customer.name}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                The database will be restored to a customer-specific database name
+              </p>
+            </div>
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Database Type
+              </label>
+              <select
+                value={selectedDbType}
+                onChange={(e) => setSelectedDbType(e.target.value as 'blackpearl' | 'rio')}
+                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                disabled={uploading}
+              >
+                <option value="blackpearl">BlackPearl</option>
+                <option value="rio">Rio</option>
+              </select>
+            </div>
+          </>
         )}
 
         {/* Upload Area */}

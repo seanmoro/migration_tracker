@@ -20,10 +20,11 @@ export const databaseApi = {
   /**
    * Upload and restore PostgreSQL database backup (BlackPearl or Rio)
    */
-  restorePostgreSQLDatabase: async (file: File, databaseType: 'blackpearl' | 'rio'): Promise<RestoreResponse> => {
+  restorePostgreSQLDatabase: async (file: File, databaseType: 'blackpearl' | 'rio', customerId: string): Promise<RestoreResponse> => {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('databaseType', databaseType);
+    formData.append('customerId', customerId);
     
     const response = await apiClient.post<RestoreResponse>('/database/restore-postgres', formData, {
       headers: {

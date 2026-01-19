@@ -30,12 +30,13 @@ public class DatabaseController {
 
     /**
      * Upload and restore PostgreSQL database backup (BlackPearl or Rio)
-     * Accepts: .dump, .sql, .tar, .tar.gz, .zip files
+     * Accepts: .dump, .sql, .tar, .tar.gz, .zip, .zst files
      */
     @PostMapping("/restore-postgres")
     public ResponseEntity<Map<String, Object>> restorePostgreSQLDatabase(
             @RequestParam("file") MultipartFile file,
-            @RequestParam("databaseType") String databaseType) {
+            @RequestParam("databaseType") String databaseType,
+            @RequestParam("customerId") String customerId) {
         Map<String, Object> response = new HashMap<>();
         
         try {
@@ -52,9 +53,9 @@ public class DatabaseController {
             }
 
             String filename = file.getOriginalFilename();
-            logger.info("Received PostgreSQL database restore request: type={}, file={}", databaseType, filename);
+            logger.info("Received PostgreSQL database restore request: type={}, customerId={}, file={}", databaseType, customerId, filename);
 
-            PostgreSQLRestoreService.RestoreResult result = postgreSQLRestoreService.restoreDatabase(databaseType, file);
+            PostgreSQLRestoreService.RestoreResult result = postgreSQLRestoreService.restoreDatabase(databaseType, customerId, file);
             
             response.put("success", result.isSuccess());
             if (result.isSuccess()) {

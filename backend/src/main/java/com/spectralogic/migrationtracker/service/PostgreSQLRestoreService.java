@@ -1,5 +1,6 @@
 package com.spectralogic.migrationtracker.service;
 
+import com.spectralogic.migrationtracker.model.Customer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,9 +22,11 @@ public class PostgreSQLRestoreService {
     private static final Logger logger = LoggerFactory.getLogger(PostgreSQLRestoreService.class);
     
     private final DatabaseConfigService configService;
+    private final CustomerService customerService;
 
-    public PostgreSQLRestoreService(DatabaseConfigService configService) {
+    public PostgreSQLRestoreService(DatabaseConfigService configService, CustomerService customerService) {
         this.configService = configService;
+        this.customerService = customerService;
     }
 
     @Value("${postgres.blackpearl.host:localhost}")
@@ -66,7 +69,7 @@ public class PostgreSQLRestoreService {
      * Restore PostgreSQL database from backup file
      * Supports: .dump, .sql, .tar, .tar.gz, .zip, .zst
      */
-    public RestoreResult restoreDatabase(String databaseType, MultipartFile file) throws IOException {
+    public RestoreResult restoreDatabase(String databaseType, String customerId, MultipartFile file) throws IOException {
         if (file.isEmpty()) {
             throw new IllegalArgumentException("Uploaded file is empty");
         }
@@ -80,7 +83,15 @@ public class PostgreSQLRestoreService {
             throw new IllegalArgumentException("Database type must be 'blackpearl' or 'rio'");
         }
 
-        logger.info("Restoring {} database from file: {}", databaseType, originalFilename);
+        if (customerId == null || customerId.isEmpty()) {
+            throw new IllegalArgumentException("Customer ID is required");
+        }
+
+        // Get customer to construct database name
+        Customer customer = customerService.findById(customerId);
+        String customerName = customer.getName().toLowerCase().replaceAll("[^a-z0-9]", "_");
+        
+        logger.info("Restoring {} database for customer {} ({}) from file: {}", databaseType, customer.getName(), customerId, originalFilename);
 
         // Get database connection info
         // If not configured, default to localhost for automatic setup
@@ -94,13 +105,22 @@ public class PostgreSQLRestoreService {
             dbInfo.port = 5432;
             dbInfo.username = "postgres";
             dbInfo.password = "";
-            // Use default database name
+            // Use customer-specific database name: tapesystem_customer_name or rio_db_customer_name
             if (databaseType.equalsIgnoreCase("blackpearl")) {
-                dbInfo.database = "tapesystem";
+                dbInfo.database = "tapesystem_" + customerName;
             } else {
-                dbInfo.database = "rio_db";
+                dbInfo.database = "rio_db_" + customerName;
             }
+            logger.info("Using customer-specific database name: {}", dbInfo.database);
+        } else {
+            // If database is configured, still use customer-specific name
+            String baseDatabase = databaseType.equalsIgnoreCase("blackpearl") ? "tapesystem" : "rio_db";
+            dbInfo.database = baseDatabase + "_" + customerName;
+            logger.info("Using customer-specific database name: {}", dbInfo.database);
         }
+
+        // Create database if it doesn't exist
+        createDatabaseIfNotExists(dbInfo);
 
         // Create temp directory for processing
         Path tempDir = Files.createTempDirectory("pg-restore-");
@@ -1440,6 +1460,81 @@ public class PostgreSQLRestoreService {
                 throw new RuntimeException("Failed to copy " + sourcePath + " to " + target, e);
             }
         });
+    }
+
+    /**
+     * Create PostgreSQL database if it doesn't exist
+     */
+    private void createDatabaseIfNotExists(DatabaseInfo dbInfo) {
+        try {
+            // Connect to postgres database to check/create target database
+            List<String> command = new ArrayList<>();
+            command.add("psql");
+            command.add("-h"); command.add(dbInfo.host);
+            command.add("-p"); command.add(String.valueOf(dbInfo.port));
+            command.add("-U"); command.add(dbInfo.username);
+            command.add("-d"); command.add("postgres"); // Connect to default postgres database
+            command.add("-tc"); // Single command, no headers
+            command.add("SELECT 1 FROM pg_database WHERE datname = '" + dbInfo.database + "'");
+            
+            ProcessBuilder pb = new ProcessBuilder(command);
+            pb.environment().put("PGPASSWORD", dbInfo.password);
+            pb.redirectErrorStream(true);
+            
+            Process process = pb.start();
+            StringBuilder output = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append("\n");
+                }
+            }
+            
+            int exitCode = process.waitFor();
+            String result = output.toString().trim();
+            
+            // If database doesn't exist (result is empty or doesn't contain "1"), create it
+            if (exitCode == 0 && (result.isEmpty() || !result.contains("1"))) {
+                logger.info("Database {} does not exist, creating it...", dbInfo.database);
+                
+                // Create database
+                List<String> createCommand = new ArrayList<>();
+                createCommand.add("psql");
+                createCommand.add("-h"); createCommand.add(dbInfo.host);
+                createCommand.add("-p"); createCommand.add(String.valueOf(dbInfo.port));
+                createCommand.add("-U"); createCommand.add(dbInfo.username);
+                createCommand.add("-d"); createCommand.add("postgres");
+                createCommand.add("-c"); createCommand.add("CREATE DATABASE \"" + dbInfo.database + "\"");
+                
+                ProcessBuilder createPb = new ProcessBuilder(createCommand);
+                createPb.environment().put("PGPASSWORD", dbInfo.password);
+                createPb.redirectErrorStream(true);
+                
+                Process createProcess = createPb.start();
+                StringBuilder createOutput = new StringBuilder();
+                try (BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(createProcess.getInputStream()))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        createOutput.append(line).append("\n");
+                    }
+                }
+                
+                int createExitCode = createProcess.waitFor();
+                if (createExitCode == 0) {
+                    logger.info("Database {} created successfully", dbInfo.database);
+                } else {
+                    logger.warn("Failed to create database {}: {}", dbInfo.database, createOutput.toString());
+                }
+            } else if (exitCode == 0 && result.contains("1")) {
+                logger.info("Database {} already exists", dbInfo.database);
+            } else {
+                logger.warn("Could not check if database {} exists: {}", dbInfo.database, output.toString());
+            }
+        } catch (Exception e) {
+            logger.warn("Could not create database {} (it may already exist): {}", dbInfo.database, e.getMessage());
+        }
     }
 
     private DatabaseInfo getDatabaseInfo(String databaseType) {

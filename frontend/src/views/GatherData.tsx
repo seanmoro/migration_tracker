@@ -4,26 +4,32 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsApi } from '../api/projects';
 import { phasesApi } from '../api/phases';
 import { migrationApi } from '../api/migration';
-import { CheckCircle2, XCircle, Loader2, Search, CheckSquare, Square, Calendar, AlertTriangle, Info } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, Search, CheckSquare, Square, Calendar, AlertTriangle, Info, Plus } from 'lucide-react';
 import { formatBytes, formatNumber } from '../utils/format';
 import Breadcrumb from '../components/Breadcrumb';
+import PhaseForm from '../components/PhaseForm';
 import { useToastContext } from '../contexts/ToastContext';
 
 export default function GatherData() {
   const location = useLocation();
+  const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [selectedProject, setSelectedProject] = useState('');
   const [selectedPhase, setSelectedPhase] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedBuckets, setSelectedBuckets] = useState<Set<string>>(new Set());
   const [bucketSearchTerm, setBucketSearchTerm] = useState('');
   const [showBucketSelection, setShowBucketSelection] = useState(false);
+  const [showPhaseForm, setShowPhaseForm] = useState(false);
   const queryClient = useQueryClient();
   const toast = useToastContext();
 
-  // Pre-fill from navigation state
+  // Pre-fill from navigation state (from restore)
   useEffect(() => {
     if (location.state) {
-      const state = location.state as { projectId?: string; phaseId?: string };
+      const state = location.state as { customerId?: string; projectId?: string; phaseId?: string };
+      if (state.customerId) {
+        setSelectedCustomerId(state.customerId);
+      }
       if (state.projectId) {
         setSelectedProject(state.projectId);
       }
@@ -34,15 +40,33 @@ export default function GatherData() {
   }, [location.state]);
 
   const { data: projects = [] } = useQuery({
-    queryKey: ['projects'],
-    queryFn: () => projectsApi.list(),
+    queryKey: ['projects', selectedCustomerId],
+    queryFn: () => projectsApi.list(selectedCustomerId || undefined),
   });
+
+  // Filter projects by customer if customer is selected
+  const filteredProjects = selectedCustomerId
+    ? projects.filter(p => p.customerId === selectedCustomerId)
+    : projects;
 
   const { data: phases = [] } = useQuery({
     queryKey: ['phases', selectedProject],
     queryFn: () => phasesApi.list(selectedProject),
     enabled: !!selectedProject,
   });
+
+  // Handle "Create New Phase" option
+  const handlePhaseChange = (value: string) => {
+    if (value === '__create_new__') {
+      if (!selectedProject) {
+        toast.warning('Please select a project first');
+        return;
+      }
+      setShowPhaseForm(true);
+    } else {
+      setSelectedPhase(value);
+    }
+  };
 
   // Get last data point for selected phase to suggest next date
   const { data: phaseData = [] } = useQuery({
@@ -162,22 +186,25 @@ export default function GatherData() {
               required
             >
               <option value="">Select a project</option>
-              {projects.map((project) => (
+              {filteredProjects.map((project) => (
                 <option key={project.id} value={project.id}>
                   {project.name}
                 </option>
               ))}
             </select>
+            {selectedCustomerId && filteredProjects.length === 0 && (
+              <p className="text-sm text-gray-500 mt-1">No projects found for this customer. Please create a project first.</p>
+            )}
           </div>
 
           <div>
             <label className="label">Phase</label>
             <select
               value={selectedPhase}
-              onChange={(e) => setSelectedPhase(e.target.value)}
+              onChange={(e) => handlePhaseChange(e.target.value)}
               className="input"
               required
-              disabled={!selectedProject || phases.length === 0}
+              disabled={!selectedProject}
             >
               <option value="">Select a phase</option>
               {phases.map((phase) => (
@@ -185,9 +212,14 @@ export default function GatherData() {
                   {phase.name}
                 </option>
               ))}
+              {selectedProject && (
+                <option value="__create_new__" className="font-semibold">
+                  + Create New Phase
+                </option>
+              )}
             </select>
             {selectedProject && phases.length === 0 && (
-              <p className="text-sm text-gray-500 mt-1">No phases found for this project</p>
+              <p className="text-sm text-gray-500 mt-1">No phases found for this project. Select "Create New Phase" to add one.</p>
             )}
           </div>
 
@@ -433,6 +465,18 @@ export default function GatherData() {
           </div>
         )}
       </div>
+
+      {/* Phase Form Modal */}
+      {showPhaseForm && selectedProject && (
+        <PhaseForm
+          projectId={selectedProject}
+          onClose={() => {
+            setShowPhaseForm(false);
+            // Refresh phases list after creating
+            queryClient.invalidateQueries({ queryKey: ['phases', selectedProject] });
+          }}
+        />
+      )}
     </div>
   );
 }

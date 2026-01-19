@@ -5,6 +5,7 @@
 set -e
 
 APP_DIR="/home/seans/new_tracker"
+# Port can be overridden by SERVER_PORT env var, but default to 80
 PORT="${SERVER_PORT:-80}"
 
 echo "=========================================="
