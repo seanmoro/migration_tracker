@@ -3,11 +3,14 @@ package com.spectralogic.migrationtracker.config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.io.Resource;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+import org.springframework.web.servlet.resource.PathResourceResolver;
 
 import java.io.File;
+import java.io.IOException;
 
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
@@ -43,8 +46,24 @@ public class WebConfig implements WebMvcConfigurer {
             // Note: REST controllers have higher precedence and will handle /api/** routes first
             registry.addResourceHandler("/**")
                     .addResourceLocations("file:" + frontendPath + "/")
-                    .resourceChain(false);
-            logger.info("Configured static file serving from: {}", frontendPath);
+                    .resourceChain(true)  // Enable resource chain for fallback
+                    .addResolver(new PathResourceResolver() {
+                        @Override
+                        protected Resource getResource(String resourcePath, Resource location) throws IOException {
+                            Resource requestedResource = location.createRelative(resourcePath);
+                            // If the requested resource doesn't exist, return index.html for SPA routing
+                            if (requestedResource.exists() && requestedResource.isReadable() && 
+                                !resourcePath.startsWith("/api")) {
+                                return requestedResource;
+                            }
+                            // Fallback to index.html for React Router (for all non-API routes)
+                            if (!resourcePath.startsWith("/api")) {
+                                return location.createRelative("index.html");
+                            }
+                            return requestedResource;
+                        }
+                    });
+            logger.info("Configured static file serving from: {} with SPA fallback", frontendPath);
         } else {
             logger.warn("Frontend dist directory not found! Static files will not be served.");
             logger.warn("Current working directory: {}", System.getProperty("user.dir"));

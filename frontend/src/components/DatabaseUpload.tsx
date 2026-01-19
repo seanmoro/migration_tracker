@@ -61,10 +61,8 @@ export default function DatabaseUpload({ onSuccess, databaseType = 'tracker' }: 
         if (onSuccess) {
           onSuccess();
         }
-        // Reload page after 2 seconds to refresh data
-        setTimeout(() => {
-          window.location.reload();
-        }, 2000);
+        // Don't reload - just stay on the same page
+        // The success message is already shown via toast
       } else {
         showToast(response.error || 'Failed to restore database', 'error');
       }
