@@ -67,6 +67,10 @@ export default function DatabaseUpload({ onSuccess, databaseType = 'tracker' }: 
         if (!selectedCustomerId) {
           showToast('Please select a customer', 'error');
           setUploading(false);
+          // Reset file input so user can select file again
+          if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+          }
           return;
         }
         response = await databaseApi.restorePostgreSQLDatabase(file, selectedDbType, selectedCustomerId);
@@ -93,6 +97,10 @@ export default function DatabaseUpload({ onSuccess, databaseType = 'tracker' }: 
         }
       } else {
         showToast(response.error || 'Failed to restore database', 'error');
+        // Reset file input on error so user can try again
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
       }
     } catch (error: any) {
       console.error('Upload error:', error);
@@ -116,6 +124,10 @@ export default function DatabaseUpload({ onSuccess, databaseType = 'tracker' }: 
         success: false,
         error: errorMessage,
       });
+      // Reset file input on error so user can try again
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     } finally {
       setUploading(false);
     }

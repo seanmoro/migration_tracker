@@ -12,6 +12,7 @@ interface PhaseFormProps {
   defaultSource?: string;
   defaultTarget?: string;
   defaultTapePartition?: string;
+  storageDomains?: string[];
 }
 
 const PHASE_TYPES: MigrationPhase['type'][] = [
@@ -20,7 +21,7 @@ const PHASE_TYPES: MigrationPhase['type'][] = [
   'RIO_CRUISE',
 ];
 
-export default function PhaseForm({ phase, projectId, onClose, defaultSource, defaultTarget, defaultTapePartition }: PhaseFormProps) {
+export default function PhaseForm({ phase, projectId, onClose, defaultSource, defaultTarget, defaultTapePartition, storageDomains = [] }: PhaseFormProps) {
   const [name, setName] = useState('');
   const [type, setType] = useState<MigrationPhase['type']>('IOM_BUCKET');
   const [source, setSource] = useState(defaultSource || '');
@@ -121,26 +122,58 @@ export default function PhaseForm({ phase, projectId, onClose, defaultSource, de
 
           <div>
             <label className="label">Source</label>
-            <input
-              type="text"
-              value={source}
-              onChange={(e) => setSource(e.target.value)}
-              className="input"
-              placeholder="Storage domain or broker name"
-              required
-            />
+            {storageDomains.length > 0 ? (
+              <select
+                value={source}
+                onChange={(e) => setSource(e.target.value)}
+                className="input"
+                required
+              >
+                <option value="">Select source storage domain</option>
+                {storageDomains.map((domain) => (
+                  <option key={domain} value={domain}>
+                    {domain}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={source}
+                onChange={(e) => setSource(e.target.value)}
+                className="input"
+                placeholder="Storage domain or broker name"
+                required
+              />
+            )}
           </div>
 
           <div>
             <label className="label">Target</label>
-            <input
-              type="text"
-              value={target}
-              onChange={(e) => setTarget(e.target.value)}
-              className="input"
-              placeholder="Storage domain or broker name"
-              required
-            />
+            {storageDomains.length > 0 ? (
+              <select
+                value={target}
+                onChange={(e) => setTarget(e.target.value)}
+                className="input"
+                required
+              >
+                <option value="">Select target storage domain</option>
+                {storageDomains.map((domain) => (
+                  <option key={domain} value={domain}>
+                    {domain}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={target}
+                onChange={(e) => setTarget(e.target.value)}
+                className="input"
+                placeholder="Storage domain or broker name"
+                required
+              />
+            )}
           </div>
 
           <div>
