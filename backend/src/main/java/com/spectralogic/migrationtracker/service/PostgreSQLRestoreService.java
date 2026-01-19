@@ -484,18 +484,20 @@ public class PostgreSQLRestoreService {
                 configureDatabaseAccessAfterRestore(databaseType, dbInfo);
             } else {
                 // Check if it's a plain TAR archive (not PostgreSQL TAR format)
-                String errorOutput = output.toString();
-                if (errorOutput.contains("could not find header for file toc.dat") || 
+                String errorOutput = output.toString().toLowerCase();
+                if ((errorOutput.contains("could not find header for file") && errorOutput.contains("toc.dat")) ||
+                    errorOutput.contains("could not find header") ||
                     errorOutput.contains("not a tar archive") ||
-                    errorOutput.contains("invalid tar header")) {
+                    errorOutput.contains("invalid tar header") ||
+                    (errorOutput.contains("toc.dat") && errorOutput.contains("tar archive"))) {
                     // This is likely a plain TAR archive, not PostgreSQL TAR format
                     // Try extracting it and looking for .sql or .dump files
                     logger.info("TAR file is not PostgreSQL TAR format, attempting to extract and find backup files");
                     return restoreFromPlainTar(databaseType, actualTarFile, extractDir, dbInfo);
                 } else {
                     result.setSuccess(false);
-                    result.setError("pg_restore failed with exit code " + exitCode + ": " + errorOutput);
-                    logger.error("pg_restore (tar) failed: {}", errorOutput);
+                    result.setError("pg_restore failed with exit code " + exitCode + ": " + output.toString());
+                    logger.error("pg_restore (tar) failed: {}", output.toString());
                 }
             }
         } catch (InterruptedException e) {
