@@ -39,7 +39,30 @@ public class MigrationDataRepository {
             data.setTargetObjects(rs.getLong("target_objects"));
             data.setTargetSize(rs.getLong("target_size"));
             data.setType(rs.getString("type"));
-            Integer scratchTapes = rs.getObject("target_scratch_tapes", Integer.class);
+            
+            // Handle target_scratch_tapes - may be null, string, or integer in SQLite
+            Integer scratchTapes = null;
+            try {
+                Object scratchTapesObj = rs.getObject("target_scratch_tapes");
+                if (scratchTapesObj != null) {
+                    if (scratchTapesObj instanceof Integer) {
+                        scratchTapes = (Integer) scratchTapesObj;
+                    } else if (scratchTapesObj instanceof Long) {
+                        scratchTapes = ((Long) scratchTapesObj).intValue();
+                    } else if (scratchTapesObj instanceof String) {
+                        String str = (String) scratchTapesObj;
+                        if (!str.isEmpty()) {
+                            scratchTapes = Integer.parseInt(str);
+                        }
+                    } else {
+                        // Try to convert via string
+                        scratchTapes = Integer.parseInt(scratchTapesObj.toString());
+                    }
+                }
+            } catch (Exception e) {
+                // If conversion fails, leave as null
+                scratchTapes = null;
+            }
             data.setTargetScratchTapes(scratchTapes);
             return data;
         }
