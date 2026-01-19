@@ -46,6 +46,7 @@ public class WebConfig implements WebMvcConfigurer {
             // Set order to Integer.MAX_VALUE to ensure REST controllers are checked first
             // REST controllers have higher precedence and will handle /api/** routes first
             // This handler catches everything else and serves static files or falls back to index.html
+            registry.setOrder(Integer.MAX_VALUE); // Set order on registry - lowest priority
             registry.addResourceHandler("/**")
                     .addResourceLocations("file:" + frontendPath + "/")
                     .resourceChain(true)
@@ -66,8 +67,7 @@ public class WebConfig implements WebMvcConfigurer {
                             // Fallback to index.html for React Router (only for non-API routes)
                             return location.createRelative("index.html");
                         }
-                    })
-                    .setOrder(Integer.MAX_VALUE); // Lowest priority - check controllers first
+                    });
             logger.info("Configured static file serving from: {} with SPA fallback (excluding /api/**)", frontendPath);
         } else {
             logger.warn("Frontend dist directory not found! Static files will not be served.");
