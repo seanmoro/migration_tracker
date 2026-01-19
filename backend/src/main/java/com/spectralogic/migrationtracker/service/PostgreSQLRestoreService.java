@@ -133,19 +133,22 @@ public class PostgreSQLRestoreService {
                 // TAR archive (BlackPearl format)
                 result = restoreFromTar(databaseType, backupFile, tempDir, dbInfo);
             } else if (filename.endsWith(".zst")) {
-                // Zstandard compressed file - decompress first, then try to restore
+                // PostgreSQL backup compressed with Zstandard - decompress first, then restore
+                // Process: .zst → zstd -d → .tar → tar -xvf → find .sql/.dump → restore with psql/pg_restore
                 Path decompressed = extractFromZst(backupFile, tempDir);
                 String decompressedName = decompressed.getFileName().toString().toLowerCase();
                 if (decompressedName.endsWith(".dump")) {
+                    // PostgreSQL custom format dump - restore with pg_restore
                     result = restoreFromDump(databaseType, decompressed, dbInfo);
                 } else if (decompressedName.endsWith(".sql")) {
+                    // PostgreSQL SQL script - restore with psql
                     result = restoreFromSql(databaseType, decompressed, dbInfo);
                 } else if (decompressedName.endsWith(".tar")) {
-                    // Decompressed .zst gave us a .tar file - extract it and look for backup files
-                    logger.info("Decompressed .zst file is a TAR archive, extracting and searching for backup files");
+                    // Decompressed .zst gave us a .tar file - extract with tar -xvf and search for PostgreSQL backup files
+                    logger.info("Decompressed .zst file is a TAR archive, extracting and searching for PostgreSQL backup files (.sql or .dump)");
                     result = restoreFromPlainTar(databaseType, decompressed, tempDir, dbInfo);
                 } else {
-                    throw new IOException("Decompressed .zst file is not a recognized format: " + decompressedName);
+                    throw new IOException("Decompressed .zst file is not a recognized PostgreSQL backup format: " + decompressedName);
                 }
             } else {
                 throw new IOException("Unsupported backup format: " + filename);
