@@ -186,7 +186,11 @@ export default function Dashboard() {
           <div className="space-y-2">
             {phasesByCustomer.map((customer) => {
               const isCustomerExpanded = expandedCustomers.has(customer.customerId);
-              const totalPhases = customer.projects.reduce((sum, p) => sum + p.phases.length, 0);
+              const projects = Array.isArray(customer.projects) ? customer.projects : [];
+              const totalPhases = projects.reduce((sum, p) => {
+                const phases = Array.isArray(p.phases) ? p.phases : [];
+                return sum + phases.length;
+              }, 0);
               
               return (
                 <div key={customer.customerId} className="border border-gray-200 rounded-lg">
@@ -209,8 +213,9 @@ export default function Dashboard() {
                   {/* Projects and Phases */}
                   {isCustomerExpanded && (
                     <div className="p-2 space-y-2">
-                      {customer.projects.map((project) => {
+                      {projects.map((project) => {
                         const isProjectExpanded = expandedProjects.has(project.projectId);
+                        const phases = Array.isArray(project.phases) ? project.phases : [];
                         
                         return (
                           <div key={project.projectId} className="border border-gray-200 rounded-lg bg-white">
@@ -226,14 +231,14 @@ export default function Dashboard() {
                                   <ChevronRight className="w-4 h-4 text-gray-500" />
                                 )}
                                 <h4 className="font-medium text-gray-800">{project.projectName}</h4>
-                                <span className="text-sm text-gray-500">({project.phases.length} phases)</span>
+                                <span className="text-sm text-gray-500">({phases.length} phases)</span>
                               </div>
                             </div>
 
                             {/* Phases List */}
                             {isProjectExpanded && (
                               <div className="p-2 space-y-2">
-                                {project.phases.map((phase) => (
+                                {phases.map((phase) => (
                                   <div
                                     key={phase.phaseId}
                                     className="border border-gray-200 rounded p-3 hover:bg-primary-50 transition-colors cursor-pointer"
