@@ -575,10 +575,12 @@ public class PostgreSQLRestoreService {
 
             logger.info("Successfully extracted TAR archive to: {}", extractDir);
 
-            // Look for .sql or .dump files in the extracted directory
+            // Check if this is a PostgreSQL data directory backup
+            // Look for characteristic PostgreSQL data directory files/directories
+            boolean isDataDirectoryBackup = false;
+            final List<String> foundFiles = new ArrayList<>();
             final Path[] foundSqlFile = {null};
             final Path[] foundDumpFile = {null};
-            final List<String> foundFiles = new ArrayList<>();
             
             try {
                 Files.walk(extractDir).forEach(path -> {
@@ -598,15 +600,48 @@ public class PostgreSQLRestoreService {
                                 foundDumpFile[0] = path;
                             }
                         }
+                    } else if (Files.isDirectory(path)) {
+                        String dirName = path.getFileName().toString().toLowerCase();
+                        // Check for PostgreSQL data directory structure
+                        if (dirName.equals("base") || dirName.equals("global") || 
+                            dirName.equals("pg_wal") || dirName.equals("pg_xact") ||
+                            dirName.equals("pg_multixact") || dirName.equals("pg_subtrans")) {
+                            foundFiles.add(extractDir.relativize(path).toString() + "/");
+                        }
                     }
                 });
+                
+                // Check for PG_VERSION file which indicates data directory backup
+                Path pgVersion = extractDir.resolve("PG_VERSION");
+                if (Files.exists(pgVersion)) {
+                    isDataDirectoryBackup = true;
+                    logger.info("Detected PostgreSQL data directory backup (found PG_VERSION file)");
+                }
+                
+                // Also check if we found data directory structure
+                if (!isDataDirectoryBackup) {
+                    long dataDirDirs = foundFiles.stream()
+                        .filter(f -> f.contains("base/") || f.contains("global/") || 
+                                   f.contains("pg_wal/") || f.contains("pg_xact/"))
+                        .count();
+                    if (dataDirDirs > 0) {
+                        isDataDirectoryBackup = true;
+                        logger.info("Detected PostgreSQL data directory backup (found data directory structure)");
+                    }
+                }
             } catch (IOException e) {
                 result.setSuccess(false);
                 result.setError("Failed to search extracted files: " + e.getMessage());
                 return result;
             }
 
-            // Restore using the found file
+            // If this is a data directory backup, restore it directly
+            if (isDataDirectoryBackup) {
+                logger.info("TAR archive contains PostgreSQL data directory backup, restoring to data directory");
+                return restoreFromDataDirectory(databaseType, extractDir, dbInfo);
+            }
+
+            // Restore using the found file (pg_dump backup)
             if (foundDumpFile[0] != null) {
                 logger.info("Found .dump file in TAR archive: {}", foundDumpFile[0]);
                 return restoreFromDump(databaseType, foundDumpFile[0], dbInfo);
@@ -648,6 +683,207 @@ public class PostgreSQLRestoreService {
             result.setError("Failed to extract TAR archive: " + e.getMessage());
             throw e;
         }
+    }
+
+    /**
+     * Restore PostgreSQL data directory backup
+     * Extracts the data directory backup to the PostgreSQL data directory
+     */
+    private RestoreResult restoreFromDataDirectory(String databaseType, Path extractedDataDir, DatabaseInfo dbInfo) throws IOException {
+        RestoreResult result = new RestoreResult();
+        result.setDatabaseType(databaseType);
+        result.setFormat("data directory");
+
+        logger.info("Restoring PostgreSQL data directory backup for {}", databaseType);
+
+        try {
+            // Get PostgreSQL data directory path
+            Path pgDataDir = getPostgreSQLDataDirectory(databaseType, dbInfo);
+            if (pgDataDir == null) {
+                result.setSuccess(false);
+                result.setError("Could not determine PostgreSQL data directory. Please ensure PostgreSQL is configured correctly.");
+                return result;
+            }
+
+            logger.info("PostgreSQL data directory: {}", pgDataDir);
+
+            // Check if data directory exists
+            if (!Files.exists(pgDataDir)) {
+                Files.createDirectories(pgDataDir);
+                logger.info("Created PostgreSQL data directory: {}", pgDataDir);
+            }
+
+            // Stop PostgreSQL if running (optional - user may have already stopped it)
+            // Note: This requires appropriate permissions
+            logger.info("Note: PostgreSQL should be stopped before restoring data directory backup");
+
+            // Backup existing data directory if it exists and has content
+            if (Files.exists(pgDataDir) && Files.list(pgDataDir).count() > 0) {
+                Path backupDir = pgDataDir.getParent().resolve(pgDataDir.getFileName().toString() + "_backup_" + System.currentTimeMillis());
+                logger.info("Backing up existing data directory to: {}", backupDir);
+                copyDirectory(pgDataDir, backupDir);
+                logger.info("Backup completed");
+            }
+
+            // Copy extracted data directory contents to PostgreSQL data directory
+            logger.info("Copying data directory backup to: {}", pgDataDir);
+            
+            // Find the actual data directory in the extracted archive
+            // It might be at the root or in a subdirectory
+            final Path[] sourceDataDir = {extractedDataDir};
+            Path pgVersion = extractedDataDir.resolve("PG_VERSION");
+            
+            // If PG_VERSION is not at root, search for it
+            if (!Files.exists(pgVersion)) {
+                try {
+                    Files.walk(extractedDataDir, 3).forEach(path -> {
+                        if (path.getFileName().toString().equals("PG_VERSION")) {
+                            sourceDataDir[0] = path.getParent();
+                        }
+                    });
+                } catch (IOException e) {
+                    logger.warn("Could not find PG_VERSION in extracted archive, using root directory");
+                }
+            }
+
+            // Copy all files and directories from source to destination
+            copyDirectory(sourceDataDir[0], pgDataDir);
+
+            // Set proper permissions (PostgreSQL data directory should be owned by postgres user)
+            // Note: This may require appropriate permissions
+            logger.info("Data directory restore completed. Please ensure proper ownership and permissions are set.");
+            logger.info("Typical command: sudo chown -R postgres:postgres {}", pgDataDir);
+            logger.info("Then start PostgreSQL: sudo systemctl start postgresql");
+
+            result.setSuccess(true);
+            result.setMessage("PostgreSQL data directory backup restored successfully to: " + pgDataDir.toString() + 
+                            ". Please ensure PostgreSQL is stopped, set proper ownership/permissions, and restart PostgreSQL.");
+
+            // Automatically configure database access
+            configureDatabaseAccessAfterRestore(databaseType, dbInfo);
+
+        } catch (Exception e) {
+            result.setSuccess(false);
+            result.setError("Failed to restore data directory backup: " + e.getMessage());
+            logger.error("Data directory restore failed", e);
+        }
+
+        return result;
+    }
+
+    /**
+     * Get PostgreSQL data directory path
+     */
+    private Path getPostgreSQLDataDirectory(String databaseType, DatabaseInfo dbInfo) throws IOException {
+        // Try to query PostgreSQL for data directory
+        try {
+            List<String> command = new ArrayList<>();
+            command.add("psql");
+            command.add("-h"); command.add(dbInfo.host);
+            command.add("-p"); command.add(String.valueOf(dbInfo.port));
+            command.add("-U"); command.add(dbInfo.username);
+            command.add("-d"); command.add("postgres"); // Connect to postgres database
+            command.add("-t"); // Tuples only
+            command.add("-A"); // Unaligned output
+            command.add("-c"); command.add("SHOW data_directory;");
+
+            ProcessBuilder pb = new ProcessBuilder(command);
+            pb.environment().put("PGPASSWORD", dbInfo.password);
+            pb.redirectErrorStream(true);
+
+            Process process = pb.start();
+            StringBuilder output = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line.trim());
+                }
+            }
+
+            int exitCode = process.waitFor();
+            if (exitCode == 0) {
+                String dataDir = output.toString().trim();
+                if (!dataDir.isEmpty() && Files.exists(Paths.get(dataDir))) {
+                    logger.info("Found PostgreSQL data directory via query: {}", dataDir);
+                    return Paths.get(dataDir);
+                }
+            }
+        } catch (Exception e) {
+            logger.debug("Could not query PostgreSQL for data directory: {}", e.getMessage());
+        }
+
+        // Fallback: Try common PostgreSQL data directory locations
+        String[] commonPaths = {
+            "/var/lib/postgresql/" + getPostgreSQLVersion() + "/main",
+            "/var/lib/postgresql/data",
+            "/usr/local/pgsql/data",
+            "/opt/postgresql/data"
+        };
+
+        for (String pathStr : commonPaths) {
+            Path path = Paths.get(pathStr);
+            if (Files.exists(path) && Files.exists(path.resolve("PG_VERSION"))) {
+                logger.info("Found PostgreSQL data directory at common location: {}", pathStr);
+                return path;
+            }
+        }
+
+        logger.warn("Could not determine PostgreSQL data directory. Using default location.");
+        return null;
+    }
+
+    /**
+     * Get PostgreSQL version (for determining data directory path)
+     */
+    private String getPostgreSQLVersion() {
+        // Try to detect PostgreSQL version
+        try {
+            List<String> command = new ArrayList<>();
+            command.add("psql");
+            command.add("--version");
+            
+            ProcessBuilder pb = new ProcessBuilder(command);
+            Process process = pb.start();
+            
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream()))) {
+                String line = reader.readLine();
+                if (line != null) {
+                    // Extract version number (e.g., "psql (PostgreSQL) 14.5" -> "14")
+                    String[] parts = line.split(" ");
+                    for (String part : parts) {
+                        if (part.matches("\\d+\\.\\d+")) {
+                            process.waitFor();
+                            return part.split("\\.")[0]; // Return major version
+                        }
+                    }
+                }
+            }
+            process.waitFor();
+        } catch (Exception e) {
+            logger.debug("Could not detect PostgreSQL version: {}", e.getMessage());
+        }
+        
+        return "14"; // Default to version 14
+    }
+
+    /**
+     * Copy directory recursively
+     */
+    private void copyDirectory(Path source, Path target) throws IOException {
+        Files.walk(source).forEach(sourcePath -> {
+            try {
+                Path targetPath = target.resolve(source.relativize(sourcePath));
+                if (Files.isDirectory(sourcePath)) {
+                    Files.createDirectories(targetPath);
+                } else {
+                    Files.copy(sourcePath, targetPath, StandardCopyOption.REPLACE_EXISTING);
+                }
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to copy " + sourcePath + " to " + target, e);
+            }
+        });
     }
 
     private DatabaseInfo getDatabaseInfo(String databaseType) {
