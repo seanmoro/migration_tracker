@@ -713,9 +713,22 @@ public class PostgreSQLRestoreService {
                 logger.info("Created PostgreSQL data directory: {}", pgDataDir);
             }
 
-            // Stop PostgreSQL if running (optional - user may have already stopped it)
-            // Note: This requires appropriate permissions
-            logger.info("Note: PostgreSQL should be stopped before restoring data directory backup");
+            // Stop PostgreSQL if running
+            logger.info("Stopping PostgreSQL service...");
+            boolean postgresStopped = stopPostgreSQL();
+            if (!postgresStopped) {
+                // Check if PostgreSQL is already stopped
+                if (isPostgreSQLRunning()) {
+                    logger.warn("PostgreSQL is still running. Please stop it manually before restoring.");
+                    result.setSuccess(false);
+                    result.setError("PostgreSQL must be stopped before restoring data directory backup. Please stop PostgreSQL manually and try again.");
+                    return result;
+                } else {
+                    logger.info("PostgreSQL is already stopped");
+                }
+            } else {
+                logger.info("PostgreSQL stopped successfully");
+            }
 
             // Backup existing data directory if it exists and has content
             if (Files.exists(pgDataDir) && Files.list(pgDataDir).count() > 0) {
@@ -748,16 +761,31 @@ public class PostgreSQLRestoreService {
 
             // Copy all files and directories from source to destination
             copyDirectory(sourceDataDir[0], pgDataDir);
+            logger.info("Data directory files copied successfully");
 
             // Set proper permissions (PostgreSQL data directory should be owned by postgres user)
-            // Note: This may require appropriate permissions
-            logger.info("Data directory restore completed. Please ensure proper ownership and permissions are set.");
-            logger.info("Typical command: sudo chown -R postgres:postgres {}", pgDataDir);
-            logger.info("Then start PostgreSQL: sudo systemctl start postgresql");
+            logger.info("Setting proper ownership and permissions...");
+            boolean permissionsSet = setPostgreSQLPermissions(pgDataDir);
+            if (!permissionsSet) {
+                logger.warn("Could not set permissions automatically. You may need to run: sudo chown -R postgres:postgres {}", pgDataDir);
+            } else {
+                logger.info("Permissions set successfully");
+            }
 
-            result.setSuccess(true);
-            result.setMessage("PostgreSQL data directory backup restored successfully to: " + pgDataDir.toString() + 
-                            ". Please ensure PostgreSQL is stopped, set proper ownership/permissions, and restart PostgreSQL.");
+            // Start PostgreSQL
+            logger.info("Starting PostgreSQL service...");
+            boolean postgresStarted = startPostgreSQL();
+            if (!postgresStarted) {
+                logger.warn("Could not start PostgreSQL automatically. Please start it manually: sudo systemctl start postgresql");
+                result.setSuccess(true);
+                result.setMessage("PostgreSQL data directory backup restored successfully to: " + pgDataDir.toString() + 
+                                ". Please start PostgreSQL manually: sudo systemctl start postgresql");
+            } else {
+                logger.info("PostgreSQL started successfully");
+                result.setSuccess(true);
+                result.setMessage("PostgreSQL data directory backup restored successfully to: " + pgDataDir.toString() + 
+                                ". PostgreSQL has been restarted and is ready to use.");
+            }
 
             // Automatically configure database access
             configureDatabaseAccessAfterRestore(databaseType, dbInfo);
@@ -769,6 +797,337 @@ public class PostgreSQLRestoreService {
         }
 
         return result;
+    }
+
+    /**
+     * Stop PostgreSQL service
+     * Tries systemctl first, then pg_ctl as fallback
+     */
+    private boolean stopPostgreSQL() {
+        // Try systemctl first (most common on Linux)
+        try {
+            List<String> command = new ArrayList<>();
+            command.add("systemctl");
+            command.add("stop");
+            command.add("postgresql");
+            
+            ProcessBuilder pb = new ProcessBuilder(command);
+            pb.redirectErrorStream(true);
+            
+            Process process = pb.start();
+            StringBuilder output = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append("\n");
+                    logger.debug("systemctl stop: {}", line);
+                }
+            }
+            
+            int exitCode = process.waitFor();
+            if (exitCode == 0) {
+                logger.info("PostgreSQL stopped via systemctl");
+                return true;
+            }
+        } catch (Exception e) {
+            logger.debug("systemctl stop failed: {}", e.getMessage());
+        }
+
+        // Try alternative service names
+        String[] serviceNames = {"postgresql@14-main", "postgresql@15-main", "postgresql@16-main", 
+                                "postgresql-14", "postgresql-15", "postgresql-16"};
+        for (String serviceName : serviceNames) {
+            try {
+                List<String> command = new ArrayList<>();
+                command.add("systemctl");
+                command.add("stop");
+                command.add(serviceName);
+                
+                ProcessBuilder pb = new ProcessBuilder(command);
+                pb.redirectErrorStream(true);
+                
+                Process process = pb.start();
+                try (BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(process.getInputStream()))) {
+                    while (reader.readLine() != null) {
+                        // Consume output
+                    }
+                }
+                
+                int exitCode = process.waitFor();
+                if (exitCode == 0) {
+                    logger.info("PostgreSQL stopped via systemctl ({})", serviceName);
+                    return true;
+                }
+            } catch (Exception e) {
+                logger.debug("systemctl stop {} failed: {}", serviceName, e.getMessage());
+            }
+        }
+
+        // Try pg_ctl as fallback (works if we know the data directory)
+        try {
+            // Try to find pg_ctl and data directory
+            List<String> command = new ArrayList<>();
+            command.add("pg_ctl");
+            command.add("stop");
+            command.add("-D");
+            command.add("/var/lib/postgresql/14/main"); // Try common location
+            
+            ProcessBuilder pb = new ProcessBuilder(command);
+            pb.redirectErrorStream(true);
+            
+            Process process = pb.start();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream()))) {
+                while (reader.readLine() != null) {
+                    // Consume output
+                }
+            }
+            
+            int exitCode = process.waitFor();
+            if (exitCode == 0) {
+                logger.info("PostgreSQL stopped via pg_ctl");
+                return true;
+            }
+        } catch (Exception e) {
+            logger.debug("pg_ctl stop failed: {}", e.getMessage());
+        }
+
+        logger.debug("Could not stop PostgreSQL via commands. It may already be stopped.");
+        return false;
+    }
+
+    /**
+     * Check if PostgreSQL is currently running
+     */
+    private boolean isPostgreSQLRunning() {
+        // Check if PostgreSQL process is running
+        try {
+            List<String> command = new ArrayList<>();
+            command.add("pg_isready");
+            command.add("-h");
+            command.add("localhost");
+            command.add("-p");
+            command.add("5432");
+            
+            ProcessBuilder pb = new ProcessBuilder(command);
+            pb.redirectErrorStream(true);
+            
+            Process process = pb.start();
+            int exitCode = process.waitFor();
+            return exitCode == 0;
+        } catch (Exception e) {
+            // If pg_isready is not available, try checking process
+            try {
+                List<String> command = new ArrayList<>();
+                command.add("pgrep");
+                command.add("-f");
+                command.add("postgres");
+                
+                ProcessBuilder pb = new ProcessBuilder(command);
+                pb.redirectErrorStream(true);
+                
+                Process process = pb.start();
+                try (BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(process.getInputStream()))) {
+                    String line = reader.readLine();
+                    int exitCode = process.waitFor();
+                    return exitCode == 0 && line != null && !line.trim().isEmpty();
+                }
+            } catch (Exception e2) {
+                logger.debug("Could not check if PostgreSQL is running: {}", e2.getMessage());
+                return false; // Assume not running if we can't check
+            }
+        }
+    }
+
+    /**
+     * Set PostgreSQL data directory permissions
+     * Sets ownership to postgres:postgres
+     */
+    private boolean setPostgreSQLPermissions(Path dataDir) {
+        // Try chown without sudo first (in case we're running as postgres user)
+        try {
+            List<String> command = new ArrayList<>();
+            command.add("chown");
+            command.add("-R");
+            command.add("postgres:postgres");
+            command.add(dataDir.toAbsolutePath().toString());
+            
+            ProcessBuilder pb = new ProcessBuilder(command);
+            pb.redirectErrorStream(true);
+            
+            Process process = pb.start();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream()))) {
+                while (reader.readLine() != null) {
+                    // Consume output
+                }
+            }
+            
+            int exitCode = process.waitFor();
+            if (exitCode == 0) {
+                logger.info("Permissions set successfully (chown postgres:postgres)");
+                return true;
+            }
+        } catch (Exception e) {
+            logger.debug("chown without sudo failed: {}", e.getMessage());
+        }
+
+        // Try with sudo
+        try {
+            List<String> command = new ArrayList<>();
+            command.add("sudo");
+            command.add("chown");
+            command.add("-R");
+            command.add("postgres:postgres");
+            command.add(dataDir.toAbsolutePath().toString());
+            
+            ProcessBuilder pb = new ProcessBuilder(command);
+            pb.redirectErrorStream(true);
+            
+            Process process = pb.start();
+            StringBuilder output = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append("\n");
+                }
+            }
+            
+            int exitCode = process.waitFor();
+            if (exitCode == 0) {
+                logger.info("Permissions set successfully (sudo chown postgres:postgres)");
+                return true;
+            } else {
+                logger.warn("sudo chown failed: {}", output.toString());
+            }
+        } catch (Exception e) {
+            logger.debug("sudo chown failed: {}", e.getMessage());
+        }
+
+        logger.warn("Could not set permissions automatically. You may need to run: sudo chown -R postgres:postgres {}", dataDir);
+        return false;
+    }
+
+    /**
+     * Start PostgreSQL service
+     * Tries systemctl first, then pg_ctl as fallback
+     */
+    private boolean startPostgreSQL() {
+        // Try systemctl first (most common on Linux)
+        try {
+            List<String> command = new ArrayList<>();
+            command.add("systemctl");
+            command.add("start");
+            command.add("postgresql");
+            
+            ProcessBuilder pb = new ProcessBuilder(command);
+            pb.redirectErrorStream(true);
+            
+            Process process = pb.start();
+            StringBuilder output = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append("\n");
+                    logger.debug("systemctl start: {}", line);
+                }
+            }
+            
+            int exitCode = process.waitFor();
+            if (exitCode == 0) {
+                // Wait a moment for PostgreSQL to start
+                try {
+                    Thread.sleep(2000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                logger.info("PostgreSQL started via systemctl");
+                return true;
+            } else {
+                logger.warn("systemctl start failed: {}", output.toString());
+            }
+        } catch (Exception e) {
+            logger.debug("systemctl start failed: {}", e.getMessage());
+        }
+
+        // Try alternative service names
+        String[] serviceNames = {"postgresql@14-main", "postgresql@15-main", "postgresql@16-main",
+                                "postgresql-14", "postgresql-15", "postgresql-16"};
+        for (String serviceName : serviceNames) {
+            try {
+                List<String> command = new ArrayList<>();
+                command.add("systemctl");
+                command.add("start");
+                command.add(serviceName);
+                
+                ProcessBuilder pb = new ProcessBuilder(command);
+                pb.redirectErrorStream(true);
+                
+                Process process = pb.start();
+                try (BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(process.getInputStream()))) {
+                    while (reader.readLine() != null) {
+                        // Consume output
+                    }
+                }
+                
+                int exitCode = process.waitFor();
+                if (exitCode == 0) {
+                    // Wait a moment for PostgreSQL to start
+                    try {
+                        Thread.sleep(2000);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                    logger.info("PostgreSQL started via systemctl ({})", serviceName);
+                    return true;
+                }
+            } catch (Exception e) {
+                logger.debug("systemctl start {} failed: {}", serviceName, e.getMessage());
+            }
+        }
+
+        // Try pg_ctl as fallback
+        try {
+            List<String> command = new ArrayList<>();
+            command.add("pg_ctl");
+            command.add("start");
+            command.add("-D");
+            command.add("/var/lib/postgresql/14/main"); // Try common location
+            
+            ProcessBuilder pb = new ProcessBuilder(command);
+            pb.redirectErrorStream(true);
+            
+            Process process = pb.start();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream()))) {
+                while (reader.readLine() != null) {
+                    // Consume output
+                }
+            }
+            
+            int exitCode = process.waitFor();
+            if (exitCode == 0) {
+                // Wait a moment for PostgreSQL to start
+                try {
+                    Thread.sleep(2000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                logger.info("PostgreSQL started via pg_ctl");
+                return true;
+            }
+        } catch (Exception e) {
+            logger.debug("pg_ctl start failed: {}", e.getMessage());
+        }
+
+        logger.warn("Could not start PostgreSQL automatically. Please start it manually: sudo systemctl start postgresql");
+        return false;
     }
 
     /**
