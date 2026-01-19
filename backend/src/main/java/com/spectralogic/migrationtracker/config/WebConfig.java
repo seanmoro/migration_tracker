@@ -43,27 +43,49 @@ public class WebConfig implements WebMvcConfigurer {
         
         if (frontendPath != null) {
             // Serve static files from frontend/dist
-            // Note: REST controllers have higher precedence and will handle /api/** routes first
+            // Exclude /api/** from static resource handling - REST controllers handle those
+            // Use a more specific pattern that excludes API routes
+            registry.addResourceHandler(
+                    "/assets/**",
+                    "/*.js",
+                    "/*.css",
+                    "/*.html",
+                    "/*.ico",
+                    "/*.svg",
+                    "/*.png",
+                    "/*.jpg",
+                    "/*.jpeg",
+                    "/*.gif",
+                    "/*.woff",
+                    "/*.woff2",
+                    "/*.ttf",
+                    "/*.eot"
+            )
+                    .addResourceLocations("file:" + frontendPath + "/")
+                    .resourceChain(true);
+            
+            // Add SPA fallback for all other routes (except /api/**)
             registry.addResourceHandler("/**")
                     .addResourceLocations("file:" + frontendPath + "/")
-                    .resourceChain(true)  // Enable resource chain for fallback
+                    .resourceChain(true)
                     .addResolver(new PathResourceResolver() {
                         @Override
                         protected Resource getResource(String resourcePath, Resource location) throws IOException {
+                            // Never handle API routes - let REST controllers handle them
+                            if (resourcePath.startsWith("api/") || resourcePath.startsWith("/api/")) {
+                                return null; // Return null to indicate this resolver can't handle it
+                            }
+                            
                             Resource requestedResource = location.createRelative(resourcePath);
-                            // If the requested resource doesn't exist, return index.html for SPA routing
-                            if (requestedResource.exists() && requestedResource.isReadable() && 
-                                !resourcePath.startsWith("/api")) {
+                            // If the requested resource exists, return it
+                            if (requestedResource.exists() && requestedResource.isReadable()) {
                                 return requestedResource;
                             }
-                            // Fallback to index.html for React Router (for all non-API routes)
-                            if (!resourcePath.startsWith("/api")) {
-                                return location.createRelative("index.html");
-                            }
-                            return requestedResource;
+                            // Fallback to index.html for React Router (only for non-API routes)
+                            return location.createRelative("index.html");
                         }
                     });
-            logger.info("Configured static file serving from: {} with SPA fallback", frontendPath);
+            logger.info("Configured static file serving from: {} with SPA fallback (excluding /api/**)", frontendPath);
         } else {
             logger.warn("Frontend dist directory not found! Static files will not be served.");
             logger.warn("Current working directory: {}", System.getProperty("user.dir"));
