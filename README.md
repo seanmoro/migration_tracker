@@ -137,6 +137,10 @@ migration_tracker/
 ├── bin/
 │   ├── migration_tracker      # Main executable script
 │   └── utils.sh               # Utility functions
+├── scripts/
+│   ├── deployment/            # Deployment and update scripts
+│   ├── diagnostics/           # Diagnostic and troubleshooting scripts
+│   └── load_test_data.sh      # Load test data script
 ├── lib/
 │   └── migration-tracker-*.jar # Java application
 ├── resources/
@@ -147,6 +151,7 @@ migration_tracker/
 │   │   └── unpack_database    # Database restore script
 │   └── files/
 │       └── postgresql.conf    # PostgreSQL config template
+├── docs/                      # Organized documentation
 ├── tracker.yaml               # Configuration file
 └── tracker.yaml.example       # Configuration template
 ```
