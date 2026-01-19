@@ -558,17 +558,25 @@ public class PostgreSQLRestoreService {
             // Look for .sql or .dump files in the extracted directory
             final Path[] foundSqlFile = {null};
             final Path[] foundDumpFile = {null};
+            final List<String> foundFiles = new ArrayList<>();
             
             try {
                 Files.walk(extractDir).forEach(path -> {
-                    String name = path.getFileName().toString().toLowerCase();
-                    if (name.endsWith(".sql") && Files.isRegularFile(path)) {
-                        if (foundSqlFile[0] == null) {
-                            foundSqlFile[0] = path;
-                        }
-                    } else if (name.endsWith(".dump") && Files.isRegularFile(path)) {
-                        if (foundDumpFile[0] == null) {
-                            foundDumpFile[0] = path;
+                    if (Files.isRegularFile(path)) {
+                        String name = path.getFileName().toString().toLowerCase();
+                        String relativePath = extractDir.relativize(path).toString();
+                        
+                        // Collect all files for diagnostics
+                        foundFiles.add(relativePath);
+                        
+                        if (name.endsWith(".sql")) {
+                            if (foundSqlFile[0] == null) {
+                                foundSqlFile[0] = path;
+                            }
+                        } else if (name.endsWith(".dump")) {
+                            if (foundDumpFile[0] == null) {
+                                foundDumpFile[0] = path;
+                            }
                         }
                     }
                 });
@@ -586,8 +594,27 @@ public class PostgreSQLRestoreService {
                 logger.info("Found .sql file in TAR archive: {}", foundSqlFile[0]);
                 return restoreFromSql(databaseType, foundSqlFile[0], dbInfo);
             } else {
+                // Provide detailed error message with list of files found
+                StringBuilder errorMsg = new StringBuilder();
+                errorMsg.append("No .sql or .dump files found in TAR archive.");
+                
+                if (foundFiles.isEmpty()) {
+                    errorMsg.append(" The archive appears to be empty or contains only directories.");
+                } else {
+                    errorMsg.append(" Found ").append(foundFiles.size()).append(" file(s) in archive:");
+                    int maxFiles = Math.min(foundFiles.size(), 10);
+                    for (int i = 0; i < maxFiles; i++) {
+                        errorMsg.append("\n  - ").append(foundFiles.get(i));
+                    }
+                    if (foundFiles.size() > 10) {
+                        errorMsg.append("\n  ... and ").append(foundFiles.size() - 10).append(" more file(s)");
+                    }
+                    errorMsg.append("\n\nPlease ensure the archive contains a PostgreSQL backup file (.sql or .dump).");
+                }
+                
                 result.setSuccess(false);
-                result.setError("No .sql or .dump files found in TAR archive. Please ensure the archive contains a PostgreSQL backup file.");
+                result.setError(errorMsg.toString());
+                logger.warn("TAR archive extracted but no backup files found. Files in archive: {}", foundFiles);
                 return result;
             }
 
