@@ -248,9 +248,20 @@ See `frontend/README.md` for more details.
 
 The Java application provides the core functionality. API endpoints are documented in the frontend API files.
 
+## Documentation
+
+Comprehensive documentation is organized in the `docs/` directory:
+
+- **Setup Guides**: See `docs/setup/` for installation and configuration
+- **Deployment**: See `docs/deployment/` for deployment procedures
+- **Troubleshooting**: See `docs/troubleshooting/` for debugging guides
+- **Workflows**: See `docs/workflows/` for step-by-step workflows
+- **Reference**: See `docs/reference/` for feature documentation
+
 ## Support
 
-- **Documentation**: See `lib/help/options.txt` for command reference
+- **Documentation**: See `docs/README.md` for organized documentation
+- **Command Reference**: See `lib/help/options.txt` for command reference
 - **Version**: Check with `./bin/migration_tracker --version`
 - **Logs**: Check `log/migration_tracker.log` for detailed logs
 
