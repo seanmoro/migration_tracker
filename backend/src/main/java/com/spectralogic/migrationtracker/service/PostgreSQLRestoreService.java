@@ -761,8 +761,17 @@ public class PostgreSQLRestoreService {
             if (Files.exists(pgDataDir) && Files.list(pgDataDir).count() > 0) {
                 Path backupDir = pgDataDir.getParent().resolve(pgDataDir.getFileName().toString() + "_backup_" + System.currentTimeMillis());
                 logger.info("Backing up existing data directory to: {}", backupDir);
-                copyDirectory(pgDataDir, backupDir);
-                logger.info("Backup completed");
+                boolean backupSuccess = copyDirectoryWithPermissions(pgDataDir, backupDir);
+                if (!backupSuccess) {
+                    try {
+                        copyDirectory(pgDataDir, backupDir);
+                        logger.info("Backup completed (without sudo)");
+                    } catch (Exception e) {
+                        logger.warn("Could not backup existing data directory: {}. Continuing with restore...", e.getMessage());
+                    }
+                } else {
+                    logger.info("Backup completed");
+                }
             }
 
             // Copy extracted data directory contents to PostgreSQL data directory
@@ -787,8 +796,25 @@ public class PostgreSQLRestoreService {
             }
 
             // Copy all files and directories from source to destination
-            copyDirectory(sourceDataDir[0], pgDataDir);
-            logger.info("Data directory files copied successfully");
+            // Use rsync with sudo for better permission handling
+            boolean copySuccess = copyDirectoryWithPermissions(sourceDataDir[0], pgDataDir);
+            if (!copySuccess) {
+                // Try regular copy as fallback
+                try {
+                    copyDirectory(sourceDataDir[0], pgDataDir);
+                    logger.info("Data directory files copied successfully (without sudo)");
+                } catch (Exception e) {
+                    result.setSuccess(false);
+                    result.setError("Failed to copy data directory files: " + e.getMessage() + 
+                                  "\n\nThis may require sudo permissions. You can copy manually:\n" +
+                                  "sudo rsync -av " + sourceDataDir[0] + "/ " + pgDataDir + "/\n" +
+                                  "Or ensure the application has write permissions to: " + pgDataDir);
+                    logger.error("Failed to copy data directory", e);
+                    return result;
+                }
+            } else {
+                logger.info("Data directory files copied successfully");
+            }
 
             // Set proper permissions (PostgreSQL data directory should be owned by postgres user)
             logger.info("Setting proper ownership and permissions...");
@@ -1322,7 +1348,84 @@ public class PostgreSQLRestoreService {
     }
 
     /**
-     * Copy directory recursively
+     * Copy directory recursively using rsync with sudo (for protected directories)
+     * Returns true if successful, false otherwise
+     */
+    private boolean copyDirectoryWithPermissions(Path source, Path target) {
+        try {
+            // Try rsync with sudo first (best for preserving permissions)
+            List<String> command = new ArrayList<>();
+            command.add("sudo");
+            command.add("rsync");
+            command.add("-av");
+            command.add("--delete");
+            command.add(source.toAbsolutePath().toString() + "/");
+            command.add(target.toAbsolutePath().toString() + "/");
+
+            ProcessBuilder pb = new ProcessBuilder(command);
+            pb.redirectErrorStream(true);
+
+            Process process = pb.start();
+            StringBuilder output = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append("\n");
+                    logger.debug("rsync: {}", line);
+                }
+            }
+
+            int exitCode = process.waitFor();
+            if (exitCode == 0) {
+                logger.info("Successfully copied data directory using rsync with sudo");
+                return true;
+            } else {
+                logger.warn("rsync with sudo failed (exit code {}): {}", exitCode, output.toString());
+            }
+        } catch (Exception e) {
+            logger.debug("rsync with sudo failed: {}", e.getMessage());
+        }
+
+        // Try rsync without sudo (in case running as postgres user)
+        try {
+            List<String> command = new ArrayList<>();
+            command.add("rsync");
+            command.add("-av");
+            command.add("--delete");
+            command.add(source.toAbsolutePath().toString() + "/");
+            command.add(target.toAbsolutePath().toString() + "/");
+
+            ProcessBuilder pb = new ProcessBuilder(command);
+            pb.redirectErrorStream(true);
+
+            Process process = pb.start();
+            StringBuilder output = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append("\n");
+                    logger.debug("rsync: {}", line);
+                }
+            }
+
+            int exitCode = process.waitFor();
+            if (exitCode == 0) {
+                logger.info("Successfully copied data directory using rsync");
+                return true;
+            } else {
+                logger.debug("rsync without sudo failed (exit code {}): {}", exitCode, output.toString());
+            }
+        } catch (Exception e) {
+            logger.debug("rsync without sudo failed: {}", e.getMessage());
+        }
+
+        return false;
+    }
+
+    /**
+     * Copy directory recursively (fallback method using Java Files API)
      */
     private void copyDirectory(Path source, Path target) throws IOException {
         Files.walk(source).forEach(sourcePath -> {
