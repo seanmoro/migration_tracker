@@ -33,12 +33,18 @@ postgres:
     database: ${MT_BLACKPEARL_DATABASE:tapesystem}
     username: ${MT_BLACKPEARL_USERNAME:postgres}
     password: ${MT_BLACKPEARL_PASSWORD:}
+    # Data directory path for data directory backups (optional)
+    # If not set, will query PostgreSQL or use common locations
+    data-directory: ${MT_BLACKPEARL_DATA_DIRECTORY:}
   rio:
     host: ${MT_RIO_HOST:localhost}
     port: ${MT_RIO_PORT:5432}
     database: ${MT_RIO_DATABASE:rio_db}
     username: ${MT_RIO_USERNAME:postgres}
     password: ${MT_RIO_PASSWORD:}
+    # Data directory path for data directory backups (optional)
+    # If not set, will query PostgreSQL or use common locations
+    data-directory: ${MT_RIO_DATA_DIRECTORY:}
 
   sql:
     init:

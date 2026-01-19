@@ -55,6 +55,12 @@ public class PostgreSQLRestoreService {
     @Value("${postgres.rio.password:}")
     private String rioPassword;
 
+    @Value("${postgres.blackpearl.data-directory:}")
+    private String blackpearlDataDirectory;
+
+    @Value("${postgres.rio.data-directory:}")
+    private String rioDataDirectory;
+
     /**
      * Restore PostgreSQL database from backup file
      * Supports: .dump, .sql, .tar, .tar.gz, .zip, .zst
@@ -1134,7 +1140,27 @@ public class PostgreSQLRestoreService {
      * Get PostgreSQL data directory path
      */
     private Path getPostgreSQLDataDirectory(String databaseType, DatabaseInfo dbInfo) throws IOException {
-        // Try to query PostgreSQL for data directory
+        // First, check if data directory is explicitly configured
+        String configuredDataDir = null;
+        if (databaseType.equalsIgnoreCase("blackpearl") && blackpearlDataDirectory != null && !blackpearlDataDirectory.isEmpty()) {
+            configuredDataDir = blackpearlDataDirectory;
+            logger.info("Using configured BlackPearl data directory: {}", configuredDataDir);
+        } else if (databaseType.equalsIgnoreCase("rio") && rioDataDirectory != null && !rioDataDirectory.isEmpty()) {
+            configuredDataDir = rioDataDirectory;
+            logger.info("Using configured Rio data directory: {}", configuredDataDir);
+        }
+        
+        if (configuredDataDir != null) {
+            Path dataDirPath = Paths.get(configuredDataDir);
+            if (Files.exists(dataDirPath)) {
+                return dataDirPath;
+            } else {
+                logger.warn("Configured data directory does not exist: {}. Will try to create it or find alternative.", configuredDataDir);
+                // Continue to try other methods, but we'll use this as the target
+            }
+        }
+
+        // Try to query PostgreSQL for data directory (only if PostgreSQL is accessible)
         try {
             List<String> command = new ArrayList<>();
             command.add("psql");
@@ -1169,7 +1195,12 @@ public class PostgreSQLRestoreService {
                 }
             }
         } catch (Exception e) {
-            logger.debug("Could not query PostgreSQL for data directory: {}", e.getMessage());
+            logger.debug("Could not query PostgreSQL for data directory (PostgreSQL may not be running): {}", e.getMessage());
+        }
+        
+        // If we have a configured directory, use it even if it doesn't exist yet (we'll create it)
+        if (configuredDataDir != null) {
+            return Paths.get(configuredDataDir);
         }
 
         // Fallback: Try common PostgreSQL data directory locations
