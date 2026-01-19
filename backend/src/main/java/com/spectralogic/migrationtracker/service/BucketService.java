@@ -199,7 +199,8 @@ public class BucketService {
     public List<Bucket> getAllBuckets() {
         List<Bucket> allBuckets = new ArrayList<>();
         allBuckets.addAll(getBlackPearlBuckets());
-        allBuckets.addAll(getRioBuckets());
+        // Temporarily ignoring Rio - uncomment when ready
+        // allBuckets.addAll(getRioBuckets());
         return allBuckets;
     }
 }
