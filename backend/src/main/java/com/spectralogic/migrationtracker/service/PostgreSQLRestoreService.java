@@ -187,7 +187,20 @@ public class PostgreSQLRestoreService {
 
         // Handle ZST files (Zstandard)
         if (filename.endsWith(".zst")) {
-            return extractFromZst(archiveFile, extractDir);
+            Path decompressed = extractFromZst(archiveFile, extractDir);
+            // Recursively check if the decompressed file needs further extraction
+            // e.g., .tar.zst → .tar → extract and find backup files
+            String decompressedName = decompressed.getFileName().toString().toLowerCase();
+            if (decompressedName.endsWith(".tar") || decompressedName.endsWith(".tar.gz")) {
+                // Decompressed .zst gave us a .tar file - return it for main restore logic to handle
+                return decompressed;
+            }
+            // If decompressed to .dump or .sql, return it directly
+            if (decompressedName.endsWith(".dump") || decompressedName.endsWith(".sql")) {
+                return decompressed;
+            }
+            // Otherwise, recursively try to extract further
+            return extractBackupFile(decompressed, extractDir);
         }
 
         throw new IOException("Unsupported archive format. Supported: .zip, .gz, .zst, .dump, .sql, .tar, .tar.gz");
