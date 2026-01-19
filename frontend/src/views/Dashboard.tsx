@@ -18,7 +18,7 @@ export default function Dashboard() {
     queryFn: () => dashboardApi.getStats(),
   });
 
-  const { data: activePhases, isLoading: phasesLoading } = useQuery({
+  const { data: activePhases = [], isLoading: phasesLoading } = useQuery({
     queryKey: ['dashboard', 'active-phases'],
     queryFn: () => dashboardApi.getActivePhases(),
   });
@@ -124,7 +124,7 @@ export default function Dashboard() {
       </div>
 
       {/* Phases Needing Attention */}
-      {phasesNeedingAttention.length > 0 && (
+      {Array.isArray(phasesNeedingAttention) && phasesNeedingAttention.length > 0 && (
         <div id="phases-needing-attention" className="card border-l-4 border-l-red-500">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-2">
@@ -182,7 +182,7 @@ export default function Dashboard() {
             Active Phases ({stats?.activeMigrations || 0})
           </h2>
         </div>
-        {phasesByCustomer && phasesByCustomer.length > 0 ? (
+        {Array.isArray(phasesByCustomer) && phasesByCustomer.length > 0 ? (
           <div className="space-y-2">
             {phasesByCustomer.map((customer) => {
               const isCustomerExpanded = expandedCustomers.has(customer.customerId);
@@ -286,7 +286,7 @@ export default function Dashboard() {
       </div>
 
       {/* Progress Chart */}
-      {activePhases && activePhases.length > 0 && (
+      {Array.isArray(activePhases) && activePhases.length > 0 && (
         <div className="card">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Progress Overview</h2>
           <ProgressChart phases={activePhases} />

@@ -9,21 +9,21 @@ export const dashboardApi = {
 
   getActivePhases: async (): Promise<PhaseProgress[]> => {
     const response = await apiClient.get('/dashboard/active-phases');
-    return response.data;
+    return Array.isArray(response.data) ? response.data : [];
   },
 
   getRecentActivity: async (): Promise<any[]> => {
     const response = await apiClient.get('/dashboard/recent-activity');
-    return response.data;
+    return Array.isArray(response.data) ? response.data : [];
   },
 
   getPhasesNeedingAttention: async (): Promise<PhaseProgress[]> => {
     const response = await apiClient.get('/dashboard/phases-needing-attention');
-    return response.data;
+    return Array.isArray(response.data) ? response.data : [];
   },
 
   getActivePhasesByCustomer: async (): Promise<CustomerPhases[]> => {
     const response = await apiClient.get('/dashboard/active-phases-by-customer');
-    return response.data;
+    return Array.isArray(response.data) ? response.data : [];
   },
 };
