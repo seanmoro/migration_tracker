@@ -197,6 +197,38 @@ public class StorageDomainService {
             
             logger.info("Found {} unique storage domains from {} database", domainList.size(), databaseType);
             
+            // Log what we found for debugging
+            if (domainList.isEmpty()) {
+                logger.warn("No storage domains found in database {}. Attempted to query tables: storage_domains, domains, brokers, and columns containing 'domain' or 'broker'", databaseName);
+                
+                // Try to list all tables for debugging
+                try {
+                    List<String> allTables = jdbc.query(
+                        "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name",
+                        (rs, rowNum) -> rs.getString("table_name")
+                    );
+                    logger.info("Available tables in database {}: {}", databaseName, allTables);
+                    
+                    // List all columns that might contain domain info
+                    List<Map<String, String>> domainColumns = jdbc.query(
+                        "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND (column_name LIKE '%domain%' OR column_name LIKE '%broker%' OR column_name LIKE '%storage%') ORDER BY table_name, column_name",
+                        (rs, rowNum) -> {
+                            Map<String, String> col = new HashMap<>();
+                            col.put("table", rs.getString("table_name"));
+                            col.put("column", rs.getString("column_name"));
+                            return col;
+                        }
+                    );
+                    if (!domainColumns.isEmpty()) {
+                        logger.info("Found potential domain/broker columns: {}", domainColumns);
+                    }
+                } catch (Exception e) {
+                    logger.debug("Could not list tables for debugging: {}", e.getMessage());
+                }
+            } else {
+                logger.info("Storage domains found: {}", domainList);
+            }
+            
             StorageDomains result = new StorageDomains();
             result.setDomains(domainList);
             
