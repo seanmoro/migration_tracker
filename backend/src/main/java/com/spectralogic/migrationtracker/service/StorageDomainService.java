@@ -122,102 +122,133 @@ public class StorageDomainService {
             
             // Try multiple table/column combinations to find storage domains
             // Common patterns:
-            // 1. storage_domains table with name column
-            // 2. domains table with name column
-            // 3. brokers table with name column (for Rio)
-            // 4. storage_domain column in various tables
-            // 5. domain column in various tables
+            // 1. ds3.storage_domain table with name column (BlackPearl)
+            // 2. storage_domains table with name column (public schema)
+            // 3. domains table with name column
+            // 4. brokers table with name column (for Rio)
+            // 5. storage_domain column in various tables
+            // 6. domain column in various tables
             
+            // First, try ds3.storage_domain (most common for BlackPearl)
+            try {
+                List<String> ds3StorageDomains = jdbc.query(
+                    "SELECT DISTINCT name FROM ds3.storage_domain WHERE name IS NOT NULL AND name != '' ORDER BY name",
+                    (rs, rowNum) -> {
+                        String value = rs.getString("name");
+                        return value != null ? value : "";
+                    }
+                );
+                if (!ds3StorageDomains.isEmpty()) {
+                    domains.addAll(ds3StorageDomains);
+                    logger.info("Found {} storage domains from ds3.storage_domain.name", ds3StorageDomains.size());
+                }
+            } catch (Exception e) {
+                logger.debug("Could not query ds3.storage_domain: {}", e.getMessage());
+            }
+            
+            // Then try public schema and other schemas
+            String[] schemas = {"public", "ds3"};
             String[] tableNames = {"storage_domains", "domains", "brokers", "storage_domain", "domain"};
             String[] columnNames = {"name", "domain_name", "storage_domain", "domain", "broker_name"};
             
-            for (String tableName : tableNames) {
-                for (String columnName : columnNames) {
-                    try {
-                        // Check if table exists
-                        List<String> tables = jdbc.query(
-                            "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ?",
-                            (rs, rowNum) -> rs.getString("table_name"),
-                            tableName
-                        );
-                        
-                        if (tables.isEmpty()) {
+            for (String schema : schemas) {
+                for (String tableName : tableNames) {
+                    for (String columnName : columnNames) {
+                        // Skip ds3.storage_domain.name as we already queried it
+                        if (schema.equals("ds3") && tableName.equals("storage_domain") && columnName.equals("name")) {
                             continue;
                         }
                         
-                        // Check if column exists
-                        List<String> columns = jdbc.query(
-                            "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = ? AND column_name = ?",
-                            (rs, rowNum) -> rs.getString("column_name"),
-                            tableName, columnName
-                        );
-                        
-                        if (columns.isEmpty()) {
-                            continue;
-                        }
-                        
-                        // Query distinct values
-                        List<String> values = jdbc.query(
-                            String.format("SELECT DISTINCT %s FROM %s WHERE %s IS NOT NULL AND %s != '' ORDER BY %s", 
-                                columnName, tableName, columnName, columnName, columnName),
-                            (rs, rowNum) -> {
-                                String value = rs.getString(columnName);
-                                return value != null ? value : "";
+                        try {
+                            // Check if table exists
+                            List<String> tables = jdbc.query(
+                                "SELECT table_name FROM information_schema.tables WHERE table_schema = ? AND table_name = ?",
+                                (rs, rowNum) -> rs.getString("table_name"),
+                                schema, tableName
+                            );
+                            
+                            if (tables.isEmpty()) {
+                                continue;
                             }
-                        );
-                        
-                        if (!values.isEmpty()) {
-                            domains.addAll(values);
-                            logger.info("Found {} storage domains from {}.{}", values.size(), tableName, columnName);
+                            
+                            // Check if column exists
+                            List<String> columns = jdbc.query(
+                                "SELECT column_name FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND column_name = ?",
+                                (rs, rowNum) -> rs.getString("column_name"),
+                                schema, tableName, columnName
+                            );
+                            
+                            if (columns.isEmpty()) {
+                                continue;
+                            }
+                            
+                            // Query distinct values
+                            List<String> values = jdbc.query(
+                                String.format("SELECT DISTINCT %s FROM %s.%s WHERE %s IS NOT NULL AND %s != '' ORDER BY %s", 
+                                    columnName, schema, tableName, columnName, columnName, columnName),
+                                (rs, rowNum) -> {
+                                    String value = rs.getString(columnName);
+                                    return value != null ? value : "";
+                                }
+                            );
+                            
+                            if (!values.isEmpty()) {
+                                domains.addAll(values);
+                                logger.info("Found {} storage domains from {}.{}.{}", values.size(), schema, tableName, columnName);
+                            }
+                        } catch (Exception e) {
+                            logger.debug("Could not query {}.{}.{}: {}", schema, tableName, columnName, e.getMessage());
                         }
-                    } catch (Exception e) {
-                        logger.debug("Could not query {}.{}: {}", tableName, columnName, e.getMessage());
                     }
                 }
             }
             
             // Also try to find domains in any column that might contain domain info
-            try {
-                // Get all tables
-                List<String> allTables = jdbc.query(
-                    "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name",
-                    (rs, rowNum) -> rs.getString("table_name")
-                );
-                
-                // For each table, check for columns with "domain" or "broker" in the name
-                for (String tableName : allTables) {
-                    try {
-                        List<String> domainColumns = jdbc.query(
-                            "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = ? AND (column_name LIKE '%domain%' OR column_name LIKE '%broker%')",
-                            (rs, rowNum) -> rs.getString("column_name"),
-                            tableName
-                        );
-                        
-                        for (String columnName : domainColumns) {
-                            try {
-                                List<String> values = jdbc.query(
-                                    String.format("SELECT DISTINCT %s FROM %s WHERE %s IS NOT NULL AND %s != '' ORDER BY %s LIMIT 50", 
-                                        columnName, tableName, columnName, columnName, columnName),
-                                    (rs, rowNum) -> {
-                                        String value = rs.getString(columnName);
-                                        return value != null ? value : "";
+            // Check both public and ds3 schemas
+            for (String schema : new String[]{"public", "ds3"}) {
+                try {
+                    // Get all tables in this schema
+                    List<String> allTables = jdbc.query(
+                        "SELECT table_name FROM information_schema.tables WHERE table_schema = ? ORDER BY table_name",
+                        (rs, rowNum) -> rs.getString("table_name"),
+                        schema
+                    );
+                    
+                    // For each table, check for columns with "domain" or "broker" in the name
+                    for (String tableName : allTables) {
+                        try {
+                            List<String> domainColumns = jdbc.query(
+                                "SELECT column_name FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND (column_name LIKE '%domain%' OR column_name LIKE '%broker%')",
+                                (rs, rowNum) -> rs.getString("column_name"),
+                                schema, tableName
+                            );
+                            
+                            for (String columnName : domainColumns) {
+                                try {
+                                    List<String> values = jdbc.query(
+                                        String.format("SELECT DISTINCT %s FROM %s.%s WHERE %s IS NOT NULL AND %s != '' ORDER BY %s LIMIT 50", 
+                                            columnName, schema, tableName, columnName, columnName, columnName),
+                                        (rs, rowNum) -> {
+                                            String value = rs.getString(columnName);
+                                            return value != null ? value : "";
+                                        }
+                                    );
+                                    
+                                    if (!values.isEmpty()) {
+                                        domains.addAll(values);
+                                        logger.debug("Found {} values from {}.{}.{}", values.size(), schema, tableName, columnName);
                                     }
-                                );
-                                
-                                if (!values.isEmpty()) {
-                                    domains.addAll(values);
-                                    logger.debug("Found {} values from {}.{}", values.size(), tableName, columnName);
+                                } catch (Exception e) {
+                                    logger.debug("Could not query {}.{}.{}: {}", schema, tableName, columnName, e.getMessage());
                                 }
-                            } catch (Exception e) {
-                                logger.debug("Could not query {}.{}: {}", tableName, columnName, e.getMessage());
                             }
+                        } catch (Exception e) {
+                            logger.debug("Could not check columns for table {}.{}: {}", schema, tableName, e.getMessage());
                         }
-                    } catch (Exception e) {
-                        logger.debug("Could not check columns for table {}: {}", tableName, e.getMessage());
                     }
+                } catch (Exception e) {
+                    logger.debug("Could not list tables in schema {}: {}", schema, e.getMessage());
                 }
-            } catch (Exception e) {
-                logger.debug("Could not list tables: {}", e.getMessage());
             }
             
             // Convert to sorted list
@@ -230,26 +261,30 @@ public class StorageDomainService {
             if (domainList.isEmpty()) {
                 logger.warn("No storage domains found in database {}. Attempted to query tables: storage_domains, domains, brokers, and columns containing 'domain' or 'broker'", actualDatabaseName);
                 
-                // Try to list all tables for debugging
+                // Try to list all tables for debugging (check both public and ds3 schemas)
                 try {
-                    List<String> allTables = jdbc.query(
-                        "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name",
-                        (rs, rowNum) -> rs.getString("table_name")
-                    );
-                    logger.info("Available tables in database {}: {}", actualDatabaseName, allTables);
-                    
-                    // List all columns that might contain domain info
-                    List<Map<String, String>> domainColumns = jdbc.query(
-                        "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND (column_name LIKE '%domain%' OR column_name LIKE '%broker%' OR column_name LIKE '%storage%') ORDER BY table_name, column_name",
-                        (rs, rowNum) -> {
-                            Map<String, String> col = new HashMap<>();
-                            col.put("table", rs.getString("table_name"));
-                            col.put("column", rs.getString("column_name"));
-                            return col;
+                    for (String schema : new String[]{"public", "ds3"}) {
+                        List<String> allTables = jdbc.query(
+                            "SELECT table_name FROM information_schema.tables WHERE table_schema = ? ORDER BY table_name",
+                            (rs, rowNum) -> rs.getString("table_name"),
+                            schema
+                        );
+                        logger.info("Available tables in schema {} of database {}: {}", schema, actualDatabaseName, allTables);
+                        
+                        // List all columns that might contain domain info
+                        List<Map<String, String>> domainColumns = jdbc.query(
+                            "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = ? AND (column_name LIKE '%domain%' OR column_name LIKE '%broker%' OR column_name LIKE '%storage%') ORDER BY table_name, column_name",
+                            (rs, rowNum) -> {
+                                Map<String, String> col = new HashMap<>();
+                                col.put("table", rs.getString("table_name"));
+                                col.put("column", rs.getString("column_name"));
+                                return col;
+                            },
+                            schema
+                        );
+                        if (!domainColumns.isEmpty()) {
+                            logger.info("Found potential domain/broker columns in schema {}: {}", schema, domainColumns);
                         }
-                    );
-                    if (!domainColumns.isEmpty()) {
-                        logger.info("Found potential domain/broker columns: {}", domainColumns);
                     }
                 } catch (Exception e) {
                     logger.debug("Could not list tables for debugging: {}", e.getMessage());
