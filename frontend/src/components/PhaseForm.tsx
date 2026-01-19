@@ -122,57 +122,59 @@ export default function PhaseForm({ phase, projectId, onClose, defaultSource, de
 
           <div>
             <label className="label">Source</label>
-            {storageDomains.length > 0 ? (
-              <select
-                value={source}
-                onChange={(e) => setSource(e.target.value)}
-                className="input"
-                required
-              >
-                <option value="">Select source storage domain</option>
-                {storageDomains.map((domain) => (
+            <select
+              value={source}
+              onChange={(e) => setSource(e.target.value)}
+              className="input"
+              required
+            >
+              <option value="">Select source storage domain</option>
+              {storageDomains.length > 0 ? (
+                storageDomains.map((domain) => (
                   <option key={domain} value={domain}>
                     {domain}
                   </option>
-                ))}
-              </select>
-            ) : (
-              <input
-                type="text"
-                value={source}
-                onChange={(e) => setSource(e.target.value)}
-                className="input"
-                placeholder="Storage domain or broker name"
-                required
-              />
+                ))
+              ) : (
+                <>
+                  <option value="BlackPearl">BlackPearl</option>
+                  <option value="Rio">Rio</option>
+                </>
+              )}
+            </select>
+            {storageDomains.length === 0 && (
+              <p className="text-xs text-gray-500 mt-1">
+                No storage domains found in database. Using defaults.
+              </p>
             )}
           </div>
 
           <div>
             <label className="label">Target</label>
-            {storageDomains.length > 0 ? (
-              <select
-                value={target}
-                onChange={(e) => setTarget(e.target.value)}
-                className="input"
-                required
-              >
-                <option value="">Select target storage domain</option>
-                {storageDomains.map((domain) => (
+            <select
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
+              className="input"
+              required
+            >
+              <option value="">Select target storage domain</option>
+              {storageDomains.length > 0 ? (
+                storageDomains.map((domain) => (
                   <option key={domain} value={domain}>
                     {domain}
                   </option>
-                ))}
-              </select>
-            ) : (
-              <input
-                type="text"
-                value={target}
-                onChange={(e) => setTarget(e.target.value)}
-                className="input"
-                placeholder="Storage domain or broker name"
-                required
-              />
+                ))
+              ) : (
+                <>
+                  <option value="BlackPearl">BlackPearl</option>
+                  <option value="Rio">Rio</option>
+                </>
+              )}
+            </select>
+            {storageDomains.length === 0 && (
+              <p className="text-xs text-gray-500 mt-1">
+                No storage domains found in database. Using defaults.
+              </p>
             )}
           </div>
 
