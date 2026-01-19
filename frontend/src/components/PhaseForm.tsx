@@ -13,6 +13,7 @@ interface PhaseFormProps {
   defaultTarget?: string;
   defaultTapePartition?: string;
   storageDomains?: string[];
+  tapePartitions?: string[];
 }
 
 const PHASE_TYPES: MigrationPhase['type'][] = [
@@ -21,7 +22,7 @@ const PHASE_TYPES: MigrationPhase['type'][] = [
   'RIO_CRUISE',
 ];
 
-export default function PhaseForm({ phase, projectId, onClose, defaultSource, defaultTarget, defaultTapePartition, storageDomains = [] }: PhaseFormProps) {
+export default function PhaseForm({ phase, projectId, onClose, defaultSource, defaultTarget, defaultTapePartition, storageDomains = [], tapePartitions = [] }: PhaseFormProps) {
   const [name, setName] = useState('');
   const [type, setType] = useState<MigrationPhase['type']>('IOM_BUCKET');
   const [source, setSource] = useState(defaultSource || '');
@@ -180,13 +181,24 @@ export default function PhaseForm({ phase, projectId, onClose, defaultSource, de
 
           <div>
             <label className="label">Tape Partition (Optional)</label>
-            <input
-              type="text"
+            <select
               value={targetTapePartition}
               onChange={(e) => setTargetTapePartition(e.target.value)}
               className="input"
-              placeholder="e.g., TAPE-01"
-            />
+            >
+              <option value="">-- No tape partition --</option>
+              {tapePartitions.length > 0 ? (
+                tapePartitions.map((partition) => (
+                  <option key={partition} value={partition}>
+                    {partition}
+                  </option>
+                ))
+              ) : (
+                <option value="" disabled>
+                  No tape partitions found
+                </option>
+              )}
+            </select>
           </div>
 
           <div className="flex items-center justify-end space-x-3 pt-4">

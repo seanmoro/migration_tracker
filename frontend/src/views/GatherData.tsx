@@ -510,6 +510,7 @@ export default function GatherData() {
           defaultTarget={defaultPhaseValues.target}
           defaultTapePartition={defaultPhaseValues.targetTapePartition}
           storageDomains={storageDomains?.domains || []}
+          tapePartitions={storageDomains?.tapePartitions || []}
           onClose={() => {
             setShowPhaseForm(false);
             // Refresh phases list after creating

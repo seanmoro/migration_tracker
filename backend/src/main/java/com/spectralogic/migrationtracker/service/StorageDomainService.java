@@ -293,8 +293,77 @@ public class StorageDomainService {
                 logger.info("Storage domains found: {}", domainList);
             }
             
+            // Query tape partitions
+            List<String> tapePartitions = new ArrayList<>();
+            try {
+                // Try common table names for tape partitions
+                String[] tapePartitionTables = {"tape_partitions", "tape_partition", "partitions", "partition"};
+                String[] tapePartitionColumns = {"name", "partition_name", "tape_partition"};
+                
+                for (String schema : new String[]{"public", "ds3", "tape"}) {
+                    for (String tableName : tapePartitionTables) {
+                        for (String columnName : tapePartitionColumns) {
+                            try {
+                                // Check if table exists
+                                List<String> tables = jdbc.query(
+                                    "SELECT table_name FROM information_schema.tables WHERE table_schema = ? AND table_name = ?",
+                                    (rs, rowNum) -> rs.getString("table_name"),
+                                    schema, tableName
+                                );
+                                
+                                if (tables.isEmpty()) {
+                                    continue;
+                                }
+                                
+                                // Check if column exists
+                                List<String> columns = jdbc.query(
+                                    "SELECT column_name FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND column_name = ?",
+                                    (rs, rowNum) -> rs.getString("column_name"),
+                                    schema, tableName, columnName
+                                );
+                                
+                                if (columns.isEmpty()) {
+                                    continue;
+                                }
+                                
+                                // Query distinct values
+                                List<String> values = jdbc.query(
+                                    String.format("SELECT DISTINCT %s FROM %s.%s WHERE %s IS NOT NULL AND %s != '' ORDER BY %s", 
+                                        columnName, schema, tableName, columnName, columnName, columnName),
+                                    (rs, rowNum) -> {
+                                        String value = rs.getString(columnName);
+                                        return value != null ? value : "";
+                                    }
+                                );
+                                
+                                if (!values.isEmpty()) {
+                                    tapePartitions.addAll(values);
+                                    logger.info("Found {} tape partitions from {}.{}.{}", values.size(), schema, tableName, columnName);
+                                    break; // Found partitions, no need to check other columns for this table
+                                }
+                            } catch (Exception e) {
+                                logger.debug("Could not query {}.{}.{}: {}", schema, tableName, columnName, e.getMessage());
+                            }
+                        }
+                        if (!tapePartitions.isEmpty()) {
+                            break; // Found partitions, no need to check other tables
+                        }
+                    }
+                    if (!tapePartitions.isEmpty()) {
+                        break; // Found partitions, no need to check other schemas
+                    }
+                }
+            } catch (Exception e) {
+                logger.debug("Could not query tape partitions: {}", e.getMessage());
+            }
+            
+            // Remove duplicates and sort
+            List<String> uniqueTapePartitions = new ArrayList<>(new HashSet<>(tapePartitions));
+            uniqueTapePartitions.sort(String::compareToIgnoreCase);
+            
             StorageDomains result = new StorageDomains();
             result.setDomains(domainList);
+            result.setTapePartitions(uniqueTapePartitions);
             
             // Suggest source and target based on database type and found domains
             if (!domainList.isEmpty()) {
@@ -315,6 +384,11 @@ public class StorageDomainService {
                 result.setSuggestedTarget(databaseType.equalsIgnoreCase("blackpearl") ? "BlackPearl" : "Rio");
             }
             
+            // Suggest first tape partition if available
+            if (!uniqueTapePartitions.isEmpty()) {
+                result.setSuggestedTapePartition(uniqueTapePartitions.get(0));
+            }
+            
             return result;
             
         } catch (Exception e) {
@@ -330,6 +404,7 @@ public class StorageDomainService {
 
     public static class StorageDomains {
         private List<String> domains;
+        private List<String> tapePartitions;
         private String suggestedSource;
         private String suggestedTarget;
         private String suggestedTapePartition;
@@ -340,6 +415,14 @@ public class StorageDomainService {
 
         public void setDomains(List<String> domains) {
             this.domains = domains;
+        }
+
+        public List<String> getTapePartitions() {
+            return tapePartitions;
+        }
+
+        public void setTapePartitions(List<String> tapePartitions) {
+            this.tapePartitions = tapePartitions;
         }
 
         public String getSuggestedSource() {

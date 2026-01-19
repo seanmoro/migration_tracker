@@ -51,6 +51,7 @@ export const phasesApi = {
 
   getStorageDomains: async (customerId: string, databaseType: 'blackpearl' | 'rio'): Promise<{
     domains: string[];
+    tapePartitions?: string[];
     suggestedSource?: string;
     suggestedTarget?: string;
     suggestedTapePartition?: string;
@@ -58,6 +59,6 @@ export const phasesApi = {
     const response = await apiClient.get('/phases/storage-domains', {
       params: { customerId, databaseType },
     });
-    return response.data || { domains: [] };
+    return response.data || { domains: [], tapePartitions: [] };
   },
 };
