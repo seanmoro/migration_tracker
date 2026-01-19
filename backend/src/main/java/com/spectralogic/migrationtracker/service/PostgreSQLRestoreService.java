@@ -10,6 +10,7 @@ import java.io.*;
 import java.nio.file.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.GZIPInputStream;
@@ -707,7 +708,27 @@ public class PostgreSQLRestoreService {
             Path pgDataDir = getPostgreSQLDataDirectory(databaseType, dbInfo);
             if (pgDataDir == null) {
                 result.setSuccess(false);
-                result.setError("Could not determine PostgreSQL data directory. Please ensure PostgreSQL is configured correctly.");
+                StringBuilder errorMsg = new StringBuilder();
+                errorMsg.append("Could not determine PostgreSQL data directory.\n\n");
+                errorMsg.append("Please configure it using one of these methods:\n\n");
+                errorMsg.append("1. Set environment variable:\n");
+                if (databaseType.equalsIgnoreCase("blackpearl")) {
+                    errorMsg.append("   export MT_BLACKPEARL_DATA_DIRECTORY=/path/to/postgres/data\n");
+                } else {
+                    errorMsg.append("   export MT_RIO_DATA_DIRECTORY=/path/to/postgres/data\n");
+                }
+                errorMsg.append("\n2. Or add to application.yml:\n");
+                errorMsg.append("   postgres:\n");
+                errorMsg.append("     ").append(databaseType.toLowerCase()).append(":\n");
+                errorMsg.append("       data-directory: /path/to/postgres/data\n\n");
+                errorMsg.append("3. Common locations tried:\n");
+                errorMsg.append("   - /var/lib/postgresql/14/main\n");
+                errorMsg.append("   - /var/lib/postgresql/data\n");
+                errorMsg.append("   - /usr/local/pgsql/data\n");
+                errorMsg.append("   - /opt/postgresql/data\n\n");
+                errorMsg.append("Note: PostgreSQL may need to be running to query the data directory, ");
+                errorMsg.append("or you can specify it explicitly using the methods above.");
+                result.setError(errorMsg.toString());
                 return result;
             }
 
@@ -1206,11 +1227,17 @@ public class PostgreSQLRestoreService {
         // Fallback: Try common PostgreSQL data directory locations
         String[] commonPaths = {
             "/var/lib/postgresql/" + getPostgreSQLVersion() + "/main",
+            "/var/lib/postgresql/14/main",
+            "/var/lib/postgresql/15/main",
+            "/var/lib/postgresql/16/main",
             "/var/lib/postgresql/data",
             "/usr/local/pgsql/data",
-            "/opt/postgresql/data"
+            "/opt/postgresql/data",
+            "/usr/local/var/postgres",
+            System.getProperty("user.home") + "/postgres/data"
         };
 
+        // First, try to find existing data directories
         for (String pathStr : commonPaths) {
             Path path = Paths.get(pathStr);
             if (Files.exists(path) && Files.exists(path.resolve("PG_VERSION"))) {
@@ -1219,7 +1246,43 @@ public class PostgreSQLRestoreService {
             }
         }
 
-        logger.warn("Could not determine PostgreSQL data directory. Using default location.");
+        // If not found, try to find any PostgreSQL data directory by searching for PG_VERSION
+        logger.info("Searching for PostgreSQL data directories...");
+        Path foundDataDir = null;
+        for (String pathStr : commonPaths) {
+            Path path = Paths.get(pathStr);
+            if (Files.exists(path)) {
+                // Check parent directories too
+                Path parent = path.getParent();
+                if (parent != null && Files.exists(parent)) {
+                    try {
+                        List<Path> subdirs = Files.list(parent)
+                            .filter(p -> Files.isDirectory(p) && Files.exists(p.resolve("PG_VERSION")))
+                            .collect(Collectors.toList());
+                        if (!subdirs.isEmpty()) {
+                            foundDataDir = subdirs.get(0);
+                            logger.info("Found PostgreSQL data directory: {}", foundDataDir);
+                            return foundDataDir;
+                        }
+                    } catch (IOException e) {
+                        // Ignore and continue
+                    }
+                }
+            }
+        }
+
+        // If we still don't have a configured directory, try to use a reasonable default
+        // Use the first common path that we can create
+        for (String pathStr : commonPaths) {
+            Path path = Paths.get(pathStr);
+            Path parent = path.getParent();
+            if (parent != null && (Files.exists(parent) || parent.toFile().canWrite())) {
+                logger.info("Will use default PostgreSQL data directory location: {}", pathStr);
+                return path;
+            }
+        }
+
+        logger.warn("Could not determine PostgreSQL data directory. Please configure it explicitly.");
         return null;
     }
 
