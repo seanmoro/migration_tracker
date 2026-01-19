@@ -42,16 +42,25 @@ public class WebConfig implements WebMvcConfigurer {
         }
         
         if (frontendPath != null) {
+            // Ensure path ends with / for proper resource resolution
+            String resourceLocation = frontendPath.endsWith("/") ? "file:" + frontendPath : "file:" + frontendPath + "/";
+            logger.info("Using resource location: {}", resourceLocation);
+            
             // First, serve static assets explicitly (assets, images, etc.)
             // This ensures static files are served correctly
-            registry.addResourceHandler("/assets/**", "/*.js", "/*.css", "/*.ico", "/*.svg", "/*.png", "/*.jpg", "/*.woff", "/*.woff2")
-                    .addResourceLocations("file:" + frontendPath + "/")
+            registry.addResourceHandler("/assets/**")
+                    .addResourceLocations(resourceLocation + "assets/")
                     .resourceChain(false); // No chain for static assets - serve directly
+            
+            // Serve root-level static files (JS, CSS, etc. in root of dist)
+            registry.addResourceHandler("/*.js", "/*.css", "/*.ico", "/*.svg", "/*.png", "/*.jpg", "/*.woff", "/*.woff2")
+                    .addResourceLocations(resourceLocation)
+                    .resourceChain(false);
             
             // Then, handle all other routes with SPA fallback
             // REST controllers have higher precedence and will handle /api/** routes first
             registry.addResourceHandler("/**")
-                    .addResourceLocations("file:" + frontendPath + "/")
+                    .addResourceLocations(resourceLocation)
                     .resourceChain(true)
                     .addResolver(new PathResourceResolver() {
                         @Override
@@ -80,5 +89,9 @@ public class WebConfig implements WebMvcConfigurer {
         }
     }
 
-    // Removed addViewControllers - the resource handler with SPA fallback handles root route
+    @Override
+    public void addViewControllers(ViewControllerRegistry registry) {
+        // Add explicit view controller for root to ensure it's handled
+        registry.addViewController("/").setViewName("forward:/index.html");
+    }
 }
