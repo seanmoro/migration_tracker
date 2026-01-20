@@ -227,9 +227,53 @@ public class BucketService {
 
     public List<Bucket> getAllBuckets() {
         List<Bucket> allBuckets = new ArrayList<>();
-        allBuckets.addAll(getBlackPearlBuckets());
-        // Temporarily ignoring Rio - uncomment when ready
-        // allBuckets.addAll(getRioBuckets());
+        
+        // Query all customer-specific databases
+        try {
+            List<Customer> customers = customerService.findAll();
+            logger.info("Querying buckets from {} customer databases", customers.size());
+            
+            for (Customer customer : customers) {
+                // Try BlackPearl database for this customer
+                try {
+                    List<Bucket> customerBuckets = getBucketsForCustomer(customer.getId(), "blackpearl");
+                    allBuckets.addAll(customerBuckets);
+                    logger.debug("Found {} buckets for customer {} (BlackPearl)", customerBuckets.size(), customer.getName());
+                } catch (Exception e) {
+                    logger.debug("Could not query BlackPearl buckets for customer {}: {}", customer.getName(), e.getMessage());
+                }
+                
+                // Try Rio database for this customer
+                try {
+                    List<Bucket> customerBuckets = getBucketsForCustomer(customer.getId(), "rio");
+                    allBuckets.addAll(customerBuckets);
+                    logger.debug("Found {} buckets for customer {} (Rio)", customerBuckets.size(), customer.getName());
+                } catch (Exception e) {
+                    logger.debug("Could not query Rio buckets for customer {}: {}", customer.getName(), e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Error querying customer-specific databases: {}. Falling back to default databases.", e.getMessage());
+            // Fallback to default databases
+            allBuckets.addAll(getBlackPearlBuckets());
+            // Temporarily ignoring Rio - uncomment when ready
+            // allBuckets.addAll(getRioBuckets());
+        }
+        
+        // Also try generic databases as fallback (in case some data is in generic databases)
+        try {
+            List<Bucket> defaultBuckets = getBlackPearlBuckets();
+            // Only add buckets that don't already exist (by name)
+            for (Bucket defaultBucket : defaultBuckets) {
+                if (allBuckets.stream().noneMatch(b -> b.getName().equals(defaultBucket.getName()))) {
+                    allBuckets.add(defaultBucket);
+                }
+            }
+        } catch (Exception e) {
+            logger.debug("Could not query default BlackPearl database: {}", e.getMessage());
+        }
+        
+        logger.info("Total buckets found across all databases: {}", allBuckets.size());
         return allBuckets;
     }
 
