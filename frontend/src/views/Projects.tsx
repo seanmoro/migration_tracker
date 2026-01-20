@@ -1,13 +1,16 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { projectsApi } from '../api/projects';
 import { customersApi } from '../api/customers';
+import { phasesApi } from '../api/phases';
+import { reportsApi } from '../api/reports';
 import { MigrationProject } from '../types';
-import { Plus, Search, FolderOpen, Edit, Trash2 } from 'lucide-react';
+import { Plus, Search, Edit, Trash2 } from 'lucide-react';
 import { formatDate } from '../utils/format';
 import ProjectForm from '../components/ProjectForm';
 import Breadcrumb from '../components/Breadcrumb';
+import ProgressBar from '../components/ProgressBar';
 import { useToastContext } from '../contexts/ToastContext';
 
 export default function Projects() {
@@ -30,6 +33,53 @@ export default function Projects() {
     queryKey: ['customers'],
     queryFn: () => customersApi.list(),
   });
+
+  // Fetch phases for all projects
+  const { data: allPhases = [] } = useQuery({
+    queryKey: ['all-phases', projects.map(p => p.id).join(',')],
+    queryFn: async () => {
+      // Fetch phases for all projects in parallel
+      const phasePromises = projects.map(project =>
+        phasesApi.list(project.id)
+          .then(phases => phases)
+          .catch(() => [])
+      );
+      const results = await Promise.all(phasePromises);
+      return results.flat();
+    },
+    enabled: projects.length > 0,
+  });
+
+  // Fetch progress for all phases
+  const phaseIds = useMemo(() => allPhases.map(p => p.id).sort().join(','), [allPhases]);
+  const { data: phaseProgressMap = {} } = useQuery({
+    queryKey: ['all-phases-progress', phaseIds],
+    queryFn: async () => {
+      if (allPhases.length === 0) return {};
+      const progressPromises = allPhases.map(phase =>
+        reportsApi.getPhaseProgress(phase.id)
+          .then(progress => ({ phaseId: phase.id, progress }))
+          .catch(() => ({ phaseId: phase.id, progress: null }))
+      );
+      const results = await Promise.all(progressPromises);
+      const progressMap: Record<string, number> = {};
+      results.forEach(({ phaseId, progress }) => {
+        progressMap[phaseId] = progress?.progress ?? 0;
+      });
+      return progressMap;
+    },
+    enabled: allPhases.length > 0,
+  });
+
+  // Get phases for a specific project
+  const getProjectPhases = (projectId: string) => {
+    return allPhases.filter(phase => phase.migrationId === projectId);
+  };
+
+  // Get progress for a specific phase
+  const getPhaseProgress = (phaseId: string): number => {
+    return phaseProgressMap[phaseId] ?? 0;
+  };
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => projectsApi.delete(id),
@@ -139,13 +189,44 @@ export default function Projects() {
                 </span>
               </div>
 
+              {/* Phases List */}
+              {(() => {
+                const projectPhases = getProjectPhases(project.id);
+                if (projectPhases.length === 0) {
+                  return (
+                    <div className="mb-4 text-sm text-gray-500 text-center py-2">
+                      No phases yet
+                    </div>
+                  );
+                }
+                return (
+                  <div className="mb-4 space-y-3">
+                    {projectPhases.map((phase) => (
+                      <div key={phase.id} className="border border-gray-200 rounded p-2 hover:bg-gray-50 transition-colors">
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-sm font-medium text-gray-900 truncate">{phase.name}</h4>
+                            <p className="text-xs text-gray-600 truncate">{phase.source} → {phase.target}</p>
+                          </div>
+                          <span className="ml-2 px-2 py-0.5 bg-primary-100 text-primary-700 text-xs font-medium rounded flex-shrink-0">
+                            {phase.type.replace('_', ' ')}
+                          </span>
+                        </div>
+                        <div className="mt-2">
+                          <ProgressBar progress={getPhaseProgress(phase.id)} size="sm" label="Progress" showPercentage={true} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
               <div className="flex items-center space-x-2 pt-4 border-t border-gray-200">
                 <button
                   onClick={() => navigate(`/projects/${project.id}/phases`)}
-                  className="flex-1 btn btn-secondary flex items-center justify-center space-x-2"
+                  className="flex-1 btn btn-secondary text-sm"
                 >
-                  <FolderOpen className="w-4 h-4" />
-                  <span>View Phases</span>
+                  Manage Phases
                 </button>
                 <button
                   onClick={() => handleEdit(project)}
