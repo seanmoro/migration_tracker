@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { phasesApi } from '../api/phases';
 import { projectsApi } from '../api/projects';
+import { reportsApi } from '../api/reports';
 import { MigrationPhase } from '../types';
 import { Plus, TrendingUp, Edit, Trash2, CheckSquare, Square, Copy, Database } from 'lucide-react';
 import { formatDate } from '../utils/format';
@@ -32,6 +33,34 @@ export default function Phases() {
     queryFn: () => phasesApi.list(projectId!),
     enabled: !!projectId,
   });
+
+  // Fetch progress for all phases in parallel
+  const phaseIds = useMemo(() => phases.map(p => p.id).sort().join(','), [phases]);
+  const progressQueries = useQuery({
+    queryKey: ['phases-progress', projectId, phaseIds],
+    queryFn: async () => {
+      if (phases.length === 0) return {};
+      // Fetch progress for all phases in parallel
+      const progressPromises = phases.map(phase =>
+        reportsApi.getPhaseProgress(phase.id)
+          .then(progress => ({ phaseId: phase.id, progress }))
+          .catch(() => ({ phaseId: phase.id, progress: null }))
+      );
+      const results = await Promise.all(progressPromises);
+      // Convert to map for easy lookup
+      const progressMap: Record<string, number> = {};
+      results.forEach(({ phaseId, progress }) => {
+        progressMap[phaseId] = progress?.progress ?? 0;
+      });
+      return progressMap;
+    },
+    enabled: !!projectId && phases.length > 0,
+  });
+
+  // Get progress for a specific phase
+  const getPhaseProgress = (phaseId: string): number => {
+    return progressQueries.data?.[phaseId] ?? 0;
+  };
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => phasesApi.delete(id),
@@ -252,7 +281,7 @@ export default function Phases() {
               )}
 
               <div className="mb-4">
-                <ProgressBar progress={0} label="Progress" />
+                <ProgressBar progress={getPhaseProgress(phase.id)} label="Progress" />
               </div>
 
               <div className="flex items-center justify-between text-sm text-gray-600 mb-4">
