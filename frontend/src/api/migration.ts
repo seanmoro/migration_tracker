@@ -43,4 +43,35 @@ export const migrationApi = {
       return [];
     }
   },
+
+  getBucketsForCustomer: async (customerId: string, databaseType: 'blackpearl' | 'rio' = 'blackpearl'): Promise<Bucket[]> => {
+    try {
+      const response = await apiClient.get('/migration/buckets/customer', {
+        params: { customerId, databaseType },
+      });
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      console.warn('API returned non-array for customer buckets:', response.data);
+      return [];
+    } catch (error) {
+      console.error('Error fetching customer buckets:', error);
+      return [];
+    }
+  },
+
+  getBucketSize: async (customerId: string, bucketName: string, databaseType: 'blackpearl' | 'rio' = 'blackpearl'): Promise<Bucket | null> => {
+    try {
+      const response = await apiClient.get('/migration/buckets/size', {
+        params: { customerId, bucketName, databaseType },
+      });
+      return response.data;
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        return null;
+      }
+      console.error('Error fetching bucket size:', error);
+      throw error;
+    }
+  },
 };

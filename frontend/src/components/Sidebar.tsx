@@ -5,6 +5,7 @@ import {
   FolderKanban,
   Database,
   Upload,
+  Search,
 } from 'lucide-react';
 
 const navigation = [
@@ -12,6 +13,7 @@ const navigation = [
   { name: 'Customers', href: '/customers', icon: Users },
   { name: 'Projects', href: '/projects', icon: FolderKanban },
   { name: 'Gather Data', href: '/gather-data', icon: Database },
+  { name: 'Query Bucket Size', href: '/bucket-query', icon: Search },
   { name: 'Restore PostgreSQL', href: '/database/postgres-restore', icon: Upload },
 ];
 

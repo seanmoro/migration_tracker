@@ -50,4 +50,23 @@ public class MigrationController {
             return ResponseEntity.ok(bucketService.getAllBuckets());
         }
     }
+
+    @GetMapping("/buckets/customer")
+    public ResponseEntity<List<Bucket>> getBucketsForCustomer(
+            @RequestParam String customerId,
+            @RequestParam(required = false, defaultValue = "blackpearl") String databaseType) {
+        return ResponseEntity.ok(bucketService.getBucketsForCustomer(customerId, databaseType));
+    }
+
+    @GetMapping("/buckets/size")
+    public ResponseEntity<Bucket> getBucketSize(
+            @RequestParam String customerId,
+            @RequestParam String bucketName,
+            @RequestParam(required = false, defaultValue = "blackpearl") String databaseType) {
+        Bucket bucket = bucketService.getBucketSize(customerId, bucketName, databaseType);
+        if (bucket == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(bucket);
+    }
 }
