@@ -65,6 +65,9 @@ public class PostgreSQLRestoreService {
     @Value("${postgres.rio.data-directory:}")
     private String rioDataDirectory;
 
+    @Value("${postgres.backup.keep-count:2}")
+    private int maxBackupsToKeep;
+
     /**
      * Restore PostgreSQL database from backup file
      * Supports: .dump, .sql, .tar, .tar.gz, .zip, .zst
@@ -792,6 +795,9 @@ public class PostgreSQLRestoreService {
                 } else {
                     logger.info("Backup completed");
                 }
+                
+                // Clean up old backups to prevent directory from getting too large
+                cleanupOldBackups(pgDataDir.getParent(), pgDataDir.getFileName().toString());
             }
 
             // Copy extracted data directory contents to PostgreSQL data directory
@@ -1460,6 +1466,135 @@ public class PostgreSQLRestoreService {
                 throw new RuntimeException("Failed to copy " + sourcePath + " to " + target, e);
             }
         });
+    }
+
+    /**
+     * Clean up old backup directories, keeping only the most recent N backups
+     * @param backupParentDir The parent directory containing backup directories
+     * @param dataDirName The name of the data directory (used to identify backup directories)
+     */
+    private void cleanupOldBackups(Path backupParentDir, String dataDirName) {
+        try {
+            if (!Files.exists(backupParentDir) || !Files.isDirectory(backupParentDir)) {
+                logger.debug("Backup parent directory does not exist: {}", backupParentDir);
+                return;
+            }
+
+            // Pattern: {dataDirName}_backup_{timestamp}
+            String backupPrefix = dataDirName + "_backup_";
+            
+            // Find all backup directories matching the pattern
+            List<Path> backupDirs = Files.list(backupParentDir)
+                .filter(path -> {
+                    String dirName = path.getFileName().toString();
+                    return dirName.startsWith(backupPrefix) && Files.isDirectory(path);
+                })
+                .sorted((p1, p2) -> {
+                    // Sort by timestamp (extracted from directory name) - newest first
+                    try {
+                        String name1 = p1.getFileName().toString();
+                        String name2 = p2.getFileName().toString();
+                        String timestamp1 = name1.substring(backupPrefix.length());
+                        String timestamp2 = name2.substring(backupPrefix.length());
+                        return Long.compare(Long.parseLong(timestamp2), Long.parseLong(timestamp1));
+                    } catch (Exception e) {
+                        // If timestamp parsing fails, compare by modification time
+                        try {
+                            return Long.compare(
+                                Files.getLastModifiedTime(p2).toMillis(),
+                                Files.getLastModifiedTime(p1).toMillis()
+                            );
+                        } catch (IOException ioException) {
+                            return 0;
+                        }
+                    }
+                })
+                .collect(Collectors.toList());
+
+            if (backupDirs.size() <= maxBackupsToKeep) {
+                logger.debug("Only {} backup(s) found, keeping all (limit: {})", backupDirs.size(), maxBackupsToKeep);
+                return;
+            }
+
+            // Keep the most recent N backups, delete the rest
+            List<Path> backupsToDelete = backupDirs.subList(maxBackupsToKeep, backupDirs.size());
+            logger.info("Found {} backup(s), keeping {} most recent, deleting {} old backup(s)", 
+                       backupDirs.size(), maxBackupsToKeep, backupsToDelete.size());
+
+            for (Path backupDir : backupsToDelete) {
+                try {
+                    logger.info("Deleting old backup: {}", backupDir.getFileName());
+                    deleteDirectoryRecursively(backupDir);
+                    logger.info("Successfully deleted old backup: {}", backupDir.getFileName());
+                } catch (Exception e) {
+                    logger.warn("Failed to delete old backup {}: {}", backupDir.getFileName(), e.getMessage());
+                }
+            }
+        } catch (IOException e) {
+            logger.warn("Failed to clean up old backups: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Recursively delete a directory and all its contents
+     */
+    private void deleteDirectoryRecursively(Path directory) throws IOException {
+        if (!Files.exists(directory)) {
+            return;
+        }
+
+        // Try using system commands first (more efficient for large directories)
+        try {
+            // Try rm -rf with sudo first
+            List<String> command = new ArrayList<>();
+            command.add("sudo");
+            command.add("rm");
+            command.add("-rf");
+            command.add(directory.toAbsolutePath().toString());
+
+            ProcessBuilder pb = new ProcessBuilder(command);
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+            
+            int exitCode = process.waitFor();
+            if (exitCode == 0) {
+                logger.debug("Successfully deleted directory using sudo rm -rf: {}", directory);
+                return;
+            }
+        } catch (Exception e) {
+            logger.debug("sudo rm -rf failed, trying without sudo: {}", e.getMessage());
+        }
+
+        // Fallback: try without sudo
+        try {
+            List<String> command = new ArrayList<>();
+            command.add("rm");
+            command.add("-rf");
+            command.add(directory.toAbsolutePath().toString());
+
+            ProcessBuilder pb = new ProcessBuilder(command);
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+            
+            int exitCode = process.waitFor();
+            if (exitCode == 0) {
+                logger.debug("Successfully deleted directory using rm -rf: {}", directory);
+                return;
+            }
+        } catch (Exception e) {
+            logger.debug("rm -rf failed, using Java Files API: {}", e.getMessage());
+        }
+
+        // Final fallback: use Java Files API
+        Files.walk(directory)
+            .sorted((a, b) -> b.compareTo(a)) // Delete files before directories
+            .forEach(path -> {
+                try {
+                    Files.delete(path);
+                } catch (IOException e) {
+                    logger.warn("Failed to delete {}: {}", path, e.getMessage());
+                }
+            });
     }
 
     /**

@@ -45,6 +45,10 @@ postgres:
     # Data directory path for data directory backups (optional)
     # If not set, will query PostgreSQL or use common locations
     data-directory: ${MT_RIO_DATA_DIRECTORY:}
+  backup:
+    # Number of backup directories to keep when restoring
+    # Old backups will be automatically deleted to prevent directory from getting too large
+    keep-count: ${POSTGRES_BACKUP_KEEP_COUNT:2}
 
   sql:
     init:
