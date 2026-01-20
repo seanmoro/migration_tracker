@@ -65,7 +65,7 @@ public class PostgreSQLRestoreService {
     @Value("${postgres.rio.data-directory:}")
     private String rioDataDirectory;
 
-    @Value("${postgres.backup.keep-count:2}")
+    @Value("${postgres.backup.keep-count:3}")
     private int maxBackupsToKeep;
 
     /**

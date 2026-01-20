@@ -21,7 +21,7 @@ When restoring a PostgreSQL data directory backup, the system automatically crea
 ## Configuration
 
 ### Default Behavior
-By default, the system keeps **2 most recent backups**.
+By default, the system keeps **3 most recent backups**.
 
 ### Customizing Backup Count
 
@@ -46,9 +46,9 @@ If you have these backup directories:
 - `main_backup_1705672000000`
 - `main_backup_1705673000000` (newest)
 
-And `keep-count` is set to 2:
-- The system will keep: `main_backup_1705673000000` and `main_backup_1705672000000`
-- The system will delete: `main_backup_1705671000000`
+And `keep-count` is set to 3:
+- The system will keep: `main_backup_1705673000000`, `main_backup_1705672000000`, and `main_backup_1705671000000`
+- If there were 4 backups, the oldest would be deleted
 
 ## Backup Location
 

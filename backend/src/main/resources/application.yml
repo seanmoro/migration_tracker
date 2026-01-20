@@ -48,7 +48,7 @@ postgres:
   backup:
     # Number of backup directories to keep when restoring
     # Old backups will be automatically deleted to prevent directory from getting too large
-    keep-count: ${POSTGRES_BACKUP_KEEP_COUNT:2}
+    keep-count: ${POSTGRES_BACKUP_KEEP_COUNT:3}
 
   sql:
     init:
