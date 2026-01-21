@@ -35,18 +35,30 @@ export default function Projects() {
     queryFn: () => customersApi.list(),
   });
 
-  // Fetch phases for all projects
+  // Fetch phases for all projects (always include inactive to show all phases)
   const { data: allPhases = [] } = useQuery({
     queryKey: ['all-phases', projects.map(p => p.id).join(',')],
     queryFn: async () => {
       // Fetch phases for all projects in parallel
+      // Always include inactive phases so we can show all phases for each project
       const phasePromises = projects.map(project =>
-        phasesApi.list(project.id)
-          .then(phases => phases)
-          .catch(() => [])
+        phasesApi.list(project.id, true) // true = include inactive
+          .then(phases => {
+            // Log for debugging
+            if (phases.length > 0) {
+              console.debug(`Found ${phases.length} phases for project ${project.name} (${project.id})`);
+            }
+            return phases;
+          })
+          .catch((error) => {
+            console.error(`Error fetching phases for project ${project.name} (${project.id}):`, error);
+            return [];
+          })
       );
       const results = await Promise.all(phasePromises);
-      return results.flat();
+      const allPhases = results.flat();
+      console.debug(`Total phases fetched: ${allPhases.length} for ${projects.length} projects`);
+      return allPhases;
     },
     enabled: projects.length > 0,
   });
