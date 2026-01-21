@@ -1,13 +1,17 @@
 package com.spectralogic.migrationtracker.api;
 
+import com.spectralogic.migrationtracker.api.dto.ExportOptions;
 import com.spectralogic.migrationtracker.api.dto.Forecast;
 import com.spectralogic.migrationtracker.api.dto.PhaseProgress;
 import com.spectralogic.migrationtracker.model.MigrationData;
 import com.spectralogic.migrationtracker.service.ReportService;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.io.IOException;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -40,8 +44,35 @@ public class ReportController {
     }
 
     @PostMapping("/phases/{phaseId}/export")
-    public ResponseEntity<String> exportPhase(@PathVariable String phaseId, @RequestBody Object options) {
-        // TODO: Implement export functionality
-        return ResponseEntity.ok("Export functionality coming soon");
+    public ResponseEntity<byte[]> exportPhase(@PathVariable String phaseId, @RequestBody ExportOptions options) {
+        try {
+            byte[] exportData = service.exportPhase(phaseId, options);
+            String format = options.getFormat() != null ? options.getFormat().toLowerCase() : "json";
+            
+            HttpHeaders headers = new HttpHeaders();
+            String contentType;
+            String filename;
+            
+            switch (format) {
+                case "csv":
+                    contentType = "text/csv";
+                    filename = "phase-export-" + phaseId + ".csv";
+                    break;
+                case "json":
+                default:
+                    contentType = "application/json";
+                    filename = "phase-export-" + phaseId + ".json";
+                    break;
+            }
+            
+            headers.setContentType(MediaType.parseMediaType(contentType));
+            headers.setContentDispositionFormData("attachment", filename);
+            
+            return ResponseEntity.ok()
+                    .headers(headers)
+                    .body(exportData);
+        } catch (IOException e) {
+            return ResponseEntity.internalServerError().build();
+        }
     }
 }
