@@ -18,6 +18,52 @@ public class PhaseRepository {
 
     public PhaseRepository(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
+        // Ensure columns exist on initialization
+        ensureColumnsExist();
+    }
+    
+    /**
+     * Ensure required columns exist in the migration_phase table
+     * This is called on repository initialization to handle existing databases
+     */
+    private void ensureColumnsExist() {
+        // Ensure source_tape_partition column exists
+        try {
+            jdbcTemplate.query("SELECT source_tape_partition FROM migration_phase LIMIT 1", (rs) -> null);
+        } catch (Exception e) {
+            // Column doesn't exist, add it
+            try {
+                jdbcTemplate.execute("ALTER TABLE migration_phase ADD COLUMN source_tape_partition TEXT");
+            } catch (Exception ex) {
+                // Column might already exist or table doesn't exist, ignore
+            }
+        }
+        
+        // Ensure target_tape_partition column exists
+        try {
+            jdbcTemplate.query("SELECT target_tape_partition FROM migration_phase LIMIT 1", (rs) -> null);
+        } catch (Exception e) {
+            // Column doesn't exist, add it
+            try {
+                jdbcTemplate.execute("ALTER TABLE migration_phase ADD COLUMN target_tape_partition TEXT");
+            } catch (Exception ex) {
+                // Column might already exist or table doesn't exist, ignore
+            }
+        }
+        
+        // Ensure active column exists (for existing databases)
+        try {
+            jdbcTemplate.query("SELECT active FROM migration_phase LIMIT 1", (rs) -> null);
+        } catch (Exception e) {
+            // Column doesn't exist, add it with default value of 1 (active)
+            try {
+                jdbcTemplate.execute("ALTER TABLE migration_phase ADD COLUMN active INTEGER DEFAULT 1");
+                // Update all existing phases to be active (since they existed before the column was added)
+                jdbcTemplate.update("UPDATE migration_phase SET active = 1 WHERE active IS NULL");
+            } catch (Exception ex) {
+                // Column might already exist or table doesn't exist, ignore
+            }
+        }
     }
 
     @SuppressWarnings("null")
@@ -114,29 +160,8 @@ public class PhaseRepository {
     }
 
     public MigrationPhase save(MigrationPhase phase) {
-        // Ensure source_tape_partition column exists (for existing databases)
-        try {
-            jdbcTemplate.query("SELECT source_tape_partition FROM migration_phase LIMIT 1", (rs) -> null);
-        } catch (Exception e) {
-            // Column doesn't exist, add it
-            try {
-                jdbcTemplate.execute("ALTER TABLE migration_phase ADD COLUMN source_tape_partition TEXT");
-            } catch (Exception ex) {
-                // Column might already exist or table doesn't exist, ignore
-            }
-        }
-        
-        // Ensure active column exists (for existing databases)
-        try {
-            jdbcTemplate.query("SELECT active FROM migration_phase LIMIT 1", (rs) -> null);
-        } catch (Exception e) {
-            // Column doesn't exist, add it
-            try {
-                jdbcTemplate.execute("ALTER TABLE migration_phase ADD COLUMN active INTEGER DEFAULT 1");
-            } catch (Exception ex) {
-                // Column might already exist or table doesn't exist, ignore
-            }
-        }
+        // Columns are ensured on repository initialization, but check again here for safety
+        ensureColumnsExist();
         
         if (phase.getId() == null || findById(phase.getId()).isEmpty()) {
             // Insert
