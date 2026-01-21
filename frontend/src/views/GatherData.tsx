@@ -50,6 +50,12 @@ export default function GatherData() {
     }
   }, [location.state]);
 
+  // Fetch customers
+  const { data: customers = [] } = useQuery({
+    queryKey: ['customers'],
+    queryFn: () => customersApi.list(),
+  });
+
   const { data: projects = [] } = useQuery({
     queryKey: ['projects', selectedCustomerId],
     queryFn: () => projectsApi.list(selectedCustomerId || undefined),
@@ -223,6 +229,29 @@ export default function GatherData() {
       <div className="card max-w-2xl">
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
+            <label className="label">Customer</label>
+            <select
+              value={selectedCustomerId}
+              onChange={(e) => {
+                setSelectedCustomerId(e.target.value);
+                setSelectedProject(''); // Reset project when customer changes
+                setSelectedPhase(''); // Reset phase when customer changes
+              }}
+              className="input"
+            >
+              <option value="">Select a customer (optional)</option>
+              {customers.map((customer) => (
+                <option key={customer.id} value={customer.id}>
+                  {customer.name}
+                </option>
+              ))}
+            </select>
+            <p className="text-sm text-gray-500 mt-1">
+              Selecting a customer will filter projects and enable bucket selection from the customer's database.
+            </p>
+          </div>
+
+          <div>
             <label className="label">Project</label>
             <select
               value={selectedProject}
@@ -242,6 +271,9 @@ export default function GatherData() {
             </select>
             {selectedCustomerId && filteredProjects.length === 0 && (
               <p className="text-sm text-gray-500 mt-1">No projects found for this customer. Please create a project first.</p>
+            )}
+            {!selectedCustomerId && filteredProjects.length === 0 && (
+              <p className="text-sm text-gray-500 mt-1">No projects found. Please create a project first.</p>
             )}
           </div>
 
