@@ -10,6 +10,7 @@ import java.sql.SQLException;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
 public class PhaseRepository {
@@ -163,7 +164,24 @@ public class PhaseRepository {
         // Columns are ensured on repository initialization, but check again here for safety
         ensureColumnsExist();
         
-        if (phase.getId() == null || findById(phase.getId()).isEmpty()) {
+        // Ensure required fields are set for new phases
+        if (phase.getId() == null) {
+            phase.setId(UUID.randomUUID().toString());
+        }
+        if (phase.getCreatedAt() == null) {
+            phase.setCreatedAt(LocalDate.now());
+        }
+        if (phase.getLastUpdated() == null) {
+            phase.setLastUpdated(LocalDate.now());
+        }
+        if (phase.getActive() == null) {
+            phase.setActive(true);
+        }
+        
+        // Check if this is a new phase or an update
+        boolean isNew = findById(phase.getId()).isEmpty();
+        
+        if (isNew) {
             // Insert
             jdbcTemplate.update(
                 "INSERT INTO migration_phase (id, name, type, migration_id, source, target, created_at, last_updated, source_tape_partition, target_tape_partition, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -177,7 +195,7 @@ public class PhaseRepository {
                 phase.getLastUpdated(),
                 phase.getSourceTapePartition(),
                 phase.getTargetTapePartition(),
-                phase.getActive() != null ? phase.getActive() : true
+                phase.getActive()
             );
         } else {
             // Update
