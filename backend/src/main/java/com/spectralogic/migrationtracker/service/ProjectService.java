@@ -22,11 +22,17 @@ public class ProjectService {
         this.phaseRepository = phaseRepository;
     }
 
-    public List<MigrationProject> findAll() {
+    public List<MigrationProject> findAll(boolean includeInactive) {
+        if (includeInactive) {
+            return repository.findAllIncludingInactive();
+        }
         return repository.findAll();
     }
 
-    public List<MigrationProject> findByCustomerId(String customerId) {
+    public List<MigrationProject> findByCustomerId(String customerId, boolean includeInactive) {
+        if (includeInactive) {
+            return repository.findByCustomerIdIncludingInactive(customerId);
+        }
         return repository.findByCustomerId(customerId);
     }
 
@@ -35,7 +41,10 @@ public class ProjectService {
             .orElseThrow(() -> new RuntimeException("Project not found: " + id));
     }
 
-    public List<MigrationProject> searchByName(String name) {
+    public List<MigrationProject> searchByName(String name, boolean includeInactive) {
+        if (includeInactive) {
+            return repository.searchByNameIncludingInactive(name);
+        }
         return repository.searchByName(name);
     }
 

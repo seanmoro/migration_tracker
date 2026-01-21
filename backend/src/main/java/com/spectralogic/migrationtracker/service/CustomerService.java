@@ -25,7 +25,10 @@ public class CustomerService {
         this.phaseRepository = phaseRepository;
     }
 
-    public List<Customer> findAll() {
+    public List<Customer> findAll(boolean includeInactive) {
+        if (includeInactive) {
+            return repository.findAllIncludingInactive();
+        }
         return repository.findAll();
     }
 
@@ -34,7 +37,10 @@ public class CustomerService {
             .orElseThrow(() -> new RuntimeException("Customer not found: " + id));
     }
 
-    public List<Customer> searchByName(String name) {
+    public List<Customer> searchByName(String name, boolean includeInactive) {
+        if (includeInactive) {
+            return repository.searchByNameIncludingInactive(name);
+        }
         return repository.searchByName(name);
     }
 
@@ -55,7 +61,7 @@ public class CustomerService {
         // Cascade deactivation: if customer is being deactivated, deactivate all projects and phases
         if (wasActive && !willBeActive) {
             logger.info("Customer {} is being deactivated. Cascading deactivation to projects and phases.", id);
-            List<com.spectralogic.migrationtracker.model.MigrationProject> projects = projectRepository.findByCustomerId(id);
+            List<com.spectralogic.migrationtracker.model.MigrationProject> projects = projectRepository.findByCustomerIdIncludingInactive(id);
             for (com.spectralogic.migrationtracker.model.MigrationProject project : projects) {
                 if (project.getActive() != null && project.getActive()) {
                     project.setActive(false);

@@ -19,11 +19,13 @@ public class ProjectController {
     }
 
     @GetMapping
-    public ResponseEntity<List<MigrationProject>> getAllProjects(@RequestParam(required = false) String customerId) {
+    public ResponseEntity<List<MigrationProject>> getAllProjects(
+            @RequestParam(required = false) String customerId,
+            @RequestParam(required = false, defaultValue = "false") boolean includeInactive) {
         if (customerId != null) {
-            return ResponseEntity.ok(service.findByCustomerId(customerId));
+            return ResponseEntity.ok(service.findByCustomerId(customerId, includeInactive));
         }
-        return ResponseEntity.ok(service.findAll());
+        return ResponseEntity.ok(service.findAll(includeInactive));
     }
 
     @GetMapping("/{id}")
@@ -32,8 +34,10 @@ public class ProjectController {
     }
 
     @GetMapping("/search")
-    public ResponseEntity<List<MigrationProject>> searchProjects(@RequestParam String name) {
-        return ResponseEntity.ok(service.searchByName(name));
+    public ResponseEntity<List<MigrationProject>> searchProjects(
+            @RequestParam String name,
+            @RequestParam(required = false, defaultValue = "false") boolean includeInactive) {
+        return ResponseEntity.ok(service.searchByName(name, includeInactive));
     }
 
     @PostMapping

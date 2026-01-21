@@ -2,9 +2,11 @@ import apiClient from './client';
 import { Customer } from '../types';
 
 export const customersApi = {
-  list: async (): Promise<Customer[]> => {
+  list: async (includeInactive = false): Promise<Customer[]> => {
     try {
-      const response = await apiClient.get('/customers');
+      const response = await apiClient.get('/customers', {
+        params: { includeInactive },
+      });
       console.log('Customers API response:', response.data);
       if (Array.isArray(response.data)) {
         console.log(`Found ${response.data.length} customers`);
@@ -37,10 +39,10 @@ export const customersApi = {
     await apiClient.delete(`/customers/${id}`);
   },
 
-  search: async (name: string): Promise<Customer[]> => {
+  search: async (name: string, includeInactive = false): Promise<Customer[]> => {
     try {
       const response = await apiClient.get('/customers/search', {
-        params: { name },
+        params: { name, includeInactive },
       });
       if (Array.isArray(response.data)) {
         return response.data;

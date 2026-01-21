@@ -23,8 +23,10 @@ public class PhaseController {
     }
 
     @GetMapping
-    public ResponseEntity<List<MigrationPhase>> getPhases(@RequestParam String projectId) {
-        return ResponseEntity.ok(service.findByProjectId(projectId));
+    public ResponseEntity<List<MigrationPhase>> getPhases(
+            @RequestParam String projectId,
+            @RequestParam(required = false, defaultValue = "false") boolean includeInactive) {
+        return ResponseEntity.ok(service.findByProjectId(projectId, includeInactive));
     }
 
     @GetMapping("/{id}")
@@ -35,8 +37,9 @@ public class PhaseController {
     @GetMapping("/search")
     public ResponseEntity<List<MigrationPhase>> searchPhases(
             @RequestParam String projectId,
-            @RequestParam String name) {
-        return ResponseEntity.ok(service.searchByProjectIdAndName(projectId, name));
+            @RequestParam String name,
+            @RequestParam(required = false, defaultValue = "false") boolean includeInactive) {
+        return ResponseEntity.ok(service.searchByProjectIdAndName(projectId, name, includeInactive));
     }
 
     @PostMapping

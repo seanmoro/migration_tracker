@@ -2,9 +2,9 @@ import apiClient from './client';
 import { MigrationPhase } from '../types';
 
 export const phasesApi = {
-  list: async (projectId: string): Promise<MigrationPhase[]> => {
+  list: async (projectId: string, includeInactive = false): Promise<MigrationPhase[]> => {
     const response = await apiClient.get('/phases', {
-      params: { projectId },
+      params: { projectId, includeInactive },
     });
     return response.data;
   },
@@ -36,9 +36,9 @@ export const phasesApi = {
     await apiClient.delete(`/phases/${id}`);
   },
 
-  search: async (projectId: string, name: string): Promise<MigrationPhase[]> => {
+  search: async (projectId: string, name: string, includeInactive = false): Promise<MigrationPhase[]> => {
     const response = await apiClient.get('/phases/search', {
-      params: { projectId, name },
+      params: { projectId, name, includeInactive },
     });
     return response.data;
   },

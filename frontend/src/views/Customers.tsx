@@ -10,17 +10,18 @@ import { useToastContext } from '../contexts/ToastContext';
 
 export default function Customers() {
   const [searchTerm, setSearchTerm] = useState('');
+  const [showInactive, setShowInactive] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const queryClient = useQueryClient();
   const toast = useToastContext();
 
   const { data: customers = [], isLoading } = useQuery({
-    queryKey: ['customers', searchTerm],
+    queryKey: ['customers', searchTerm, showInactive],
     queryFn: () =>
       searchTerm
-        ? customersApi.search(searchTerm)
-        : customersApi.list(),
+        ? customersApi.search(searchTerm, showInactive)
+        : customersApi.list(showInactive),
   });
 
   // Debug logging
@@ -81,16 +82,27 @@ export default function Customers() {
         </button>
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-        <input
-          type="text"
-          placeholder="Search customers..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="input pl-10"
-        />
+      {/* Search and Filter */}
+      <div className="flex items-center space-x-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+          <input
+            type="text"
+            placeholder="Search customers..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="input pl-10"
+          />
+        </div>
+        <label className="flex items-center space-x-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={showInactive}
+            onChange={(e) => setShowInactive(e.target.checked)}
+            className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+          />
+          <span className="text-sm text-gray-700">Show inactive</span>
+        </label>
       </div>
 
       {/* Customers List */}

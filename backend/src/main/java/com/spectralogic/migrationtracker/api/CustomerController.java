@@ -19,8 +19,9 @@ public class CustomerController {
     }
 
     @GetMapping
-    public ResponseEntity<List<Customer>> getAllCustomers() {
-        return ResponseEntity.ok(service.findAll());
+    public ResponseEntity<List<Customer>> getAllCustomers(
+            @RequestParam(required = false, defaultValue = "false") boolean includeInactive) {
+        return ResponseEntity.ok(service.findAll(includeInactive));
     }
 
     @GetMapping("/{id}")
@@ -29,8 +30,10 @@ public class CustomerController {
     }
 
     @GetMapping("/search")
-    public ResponseEntity<List<Customer>> searchCustomers(@RequestParam String name) {
-        return ResponseEntity.ok(service.searchByName(name));
+    public ResponseEntity<List<Customer>> searchCustomers(
+            @RequestParam String name,
+            @RequestParam(required = false, defaultValue = "false") boolean includeInactive) {
+        return ResponseEntity.ok(service.searchByName(name, includeInactive));
     }
 
     @PostMapping

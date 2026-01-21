@@ -56,6 +56,14 @@ public class PhaseRepository {
 
     public List<MigrationPhase> findByProjectId(String projectId) {
         return jdbcTemplate.query(
+            "SELECT * FROM migration_phase WHERE migration_id = ? AND (active IS NULL OR active = 1) ORDER BY name",
+            rowMapper,
+            projectId
+        );
+    }
+
+    public List<MigrationPhase> findByProjectIdIncludingInactive(String projectId) {
+        return jdbcTemplate.query(
             "SELECT * FROM migration_phase WHERE migration_id = ? ORDER BY name",
             rowMapper,
             projectId
@@ -80,6 +88,15 @@ public class PhaseRepository {
     }
 
     public List<MigrationPhase> searchByProjectIdAndName(String projectId, String name) {
+        return jdbcTemplate.query(
+            "SELECT * FROM migration_phase WHERE migration_id = ? AND name LIKE ? AND (active IS NULL OR active = 1) ORDER BY name",
+            rowMapper,
+            projectId,
+            "%" + name + "%"
+        );
+    }
+
+    public List<MigrationPhase> searchByProjectIdAndNameIncludingInactive(String projectId, String name) {
         return jdbcTemplate.query(
             "SELECT * FROM migration_phase WHERE migration_id = ? AND name LIKE ? ORDER BY name",
             rowMapper,

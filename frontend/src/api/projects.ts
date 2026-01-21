@@ -2,9 +2,10 @@ import apiClient from './client';
 import { MigrationProject } from '../types';
 
 export const projectsApi = {
-  list: async (customerId?: string): Promise<MigrationProject[]> => {
+  list: async (customerId?: string, includeInactive = false): Promise<MigrationProject[]> => {
     try {
-      const params = customerId ? { customerId } : {};
+      const params: any = { includeInactive };
+      if (customerId) params.customerId = customerId;
       const response = await apiClient.get('/projects', { params });
       if (Array.isArray(response.data)) {
         return response.data;
@@ -40,10 +41,10 @@ export const projectsApi = {
     await apiClient.delete(`/projects/${id}`);
   },
 
-  search: async (name: string): Promise<MigrationProject[]> => {
+  search: async (name: string, includeInactive = false): Promise<MigrationProject[]> => {
     try {
       const response = await apiClient.get('/projects/search', {
-        params: { name },
+        params: { name, includeInactive },
       });
       if (Array.isArray(response.data)) {
         return response.data;

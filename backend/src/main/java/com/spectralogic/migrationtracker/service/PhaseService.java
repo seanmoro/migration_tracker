@@ -17,7 +17,10 @@ public class PhaseService {
         this.repository = repository;
     }
 
-    public List<MigrationPhase> findByProjectId(String projectId) {
+    public List<MigrationPhase> findByProjectId(String projectId, boolean includeInactive) {
+        if (includeInactive) {
+            return repository.findByProjectIdIncludingInactive(projectId);
+        }
         return repository.findByProjectId(projectId);
     }
 
@@ -26,7 +29,10 @@ public class PhaseService {
             .orElseThrow(() -> new RuntimeException("Phase not found: " + id));
     }
 
-    public List<MigrationPhase> searchByProjectIdAndName(String projectId, String name) {
+    public List<MigrationPhase> searchByProjectIdAndName(String projectId, String name, boolean includeInactive) {
+        if (includeInactive) {
+            return repository.searchByProjectIdAndNameIncludingInactive(projectId, name);
+        }
         return repository.searchByProjectIdAndName(projectId, name);
     }
 

@@ -40,12 +40,27 @@ public class ProjectRepository {
 
     public List<MigrationProject> findAll() {
         return jdbcTemplate.query(
+            "SELECT * FROM migration_project WHERE active = 1 ORDER BY name",
+            rowMapper
+        );
+    }
+
+    public List<MigrationProject> findAllIncludingInactive() {
+        return jdbcTemplate.query(
             "SELECT * FROM migration_project ORDER BY name",
             rowMapper
         );
     }
 
     public List<MigrationProject> findByCustomerId(String customerId) {
+        return jdbcTemplate.query(
+            "SELECT * FROM migration_project WHERE customer_id = ? AND active = 1 ORDER BY name",
+            rowMapper,
+            customerId
+        );
+    }
+
+    public List<MigrationProject> findByCustomerIdIncludingInactive(String customerId) {
         return jdbcTemplate.query(
             "SELECT * FROM migration_project WHERE customer_id = ? ORDER BY name",
             rowMapper,
@@ -63,6 +78,14 @@ public class ProjectRepository {
     }
 
     public List<MigrationProject> searchByName(String name) {
+        return jdbcTemplate.query(
+            "SELECT * FROM migration_project WHERE name LIKE ? AND active = 1 ORDER BY name",
+            rowMapper,
+            "%" + name + "%"
+        );
+    }
+
+    public List<MigrationProject> searchByNameIncludingInactive(String name) {
         return jdbcTemplate.query(
             "SELECT * FROM migration_project WHERE name LIKE ? ORDER BY name",
             rowMapper,
