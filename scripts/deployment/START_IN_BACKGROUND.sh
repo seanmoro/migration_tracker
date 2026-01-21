@@ -116,9 +116,10 @@ fi
 # Restart application if backend was rebuilt
 if [ "$RESTART_NEEDED" = true ]; then
     # Stop any existing process
+    # Use sudo pkill since the process might be running as root
     echo ""
     echo "🛑 Stopping any existing process..."
-    pkill -f "migration-tracker-api.*jar" || echo "   No existing process found"
+    sudo pkill -f "migration-tracker-api.*jar" || echo "   No existing process found"
     
     # Wait a moment for process to stop
     sleep 2
@@ -138,9 +139,12 @@ if [ "$RESTART_NEEDED" = true ]; then
     fi
     
     # Start in background
+    # Note: Using sudo -E to preserve environment variables and allow:
+    # 1. Binding to port 80 (requires root)
+    # 2. Writing to PostgreSQL data directory (requires root/postgres permissions)
     echo ""
-    echo "🚀 Starting Migration Tracker on port $PORT..."
-    nohup $JAVA_CMD -jar backend/target/migration-tracker-api-1.0.0.jar \
+    echo "🚀 Starting Migration Tracker on port $PORT (with sudo for port 80 and PostgreSQL permissions)..."
+    sudo -E nohup $JAVA_CMD -jar backend/target/migration-tracker-api-1.0.0.jar \
         --server.port=$PORT \
         --server.address=0.0.0.0 \
         > log/application.log 2>&1 &
@@ -165,7 +169,7 @@ if [ "$RESTART_NEEDED" = true ]; then
         echo "   tail -f $APP_DIR/log/application.log"
         echo ""
         echo "To stop the application:"
-        echo "   pkill -f 'migration-tracker-api.*jar'"
+        echo "   sudo pkill -f 'migration-tracker-api.*jar'"
     else
         echo ""
         echo "❌ Application failed to start. Check logs:"
