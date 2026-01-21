@@ -60,6 +60,9 @@ export default function GatherData() {
     ? projects.filter(p => p.customerId === selectedCustomerId)
     : projects;
 
+  // Get customer ID from selected project if customer not directly selected
+  const effectiveCustomerId = selectedCustomerId || (selectedProject ? projects.find(p => p.id === selectedProject)?.customerId : null);
+
   const { data: phases = [] } = useQuery({
     queryKey: ['phases', selectedProject],
     queryFn: () => phasesApi.list(selectedProject),
@@ -67,10 +70,13 @@ export default function GatherData() {
   });
 
   // Fetch storage domains from restored PostgreSQL database
+  // Use effectiveCustomerId (from selected customer or from selected project)
+  // Default databaseType to 'blackpearl' if not set
+  const effectiveDatabaseType = databaseType || 'blackpearl';
   const { data: storageDomains } = useQuery({
-    queryKey: ['storage-domains', selectedCustomerId, databaseType],
-    queryFn: () => phasesApi.getStorageDomains(selectedCustomerId, databaseType || 'blackpearl'),
-    enabled: !!selectedCustomerId && !!databaseType,
+    queryKey: ['storage-domains', effectiveCustomerId, effectiveDatabaseType],
+    queryFn: () => phasesApi.getStorageDomains(effectiveCustomerId || '', effectiveDatabaseType),
+    enabled: !!effectiveCustomerId && !!effectiveDatabaseType,
   });
 
   // Update default values when storage domains are fetched
@@ -82,16 +88,16 @@ export default function GatherData() {
         sourceTapePartition: storageDomains.suggestedTapePartition || '',
         targetTapePartition: storageDomains.suggestedTapePartition || ''
       });
-    } else if (databaseType) {
+    } else if (effectiveDatabaseType) {
       // Fallback to database type if no storage domains found
       setDefaultPhaseValues({
-        source: databaseType === 'blackpearl' ? 'BlackPearl' : 'Rio',
-        target: databaseType === 'blackpearl' ? 'BlackPearl' : 'Rio',
+        source: effectiveDatabaseType === 'blackpearl' ? 'BlackPearl' : 'Rio',
+        target: effectiveDatabaseType === 'blackpearl' ? 'BlackPearl' : 'Rio',
         sourceTapePartition: '',
         targetTapePartition: ''
       });
     }
-  }, [storageDomains, databaseType]);
+  }, [storageDomains, effectiveDatabaseType]);
 
   // Handle "Create New Phase" option
   const handlePhaseChange = (value: string) => {
