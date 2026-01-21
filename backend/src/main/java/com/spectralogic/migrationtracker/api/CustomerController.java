@@ -48,4 +48,11 @@ public class CustomerController {
         service.delete(id);
         return ResponseEntity.noContent().build();
     }
+
+    @PatchMapping("/{id}/status")
+    public ResponseEntity<Customer> toggleStatus(@PathVariable String id, @RequestParam boolean active) {
+        Customer customer = service.findById(id);
+        customer.setActive(active);
+        return ResponseEntity.ok(service.update(id, customer));
+    }
 }

@@ -27,6 +27,7 @@ export interface MigrationPhase {
   lastUpdated: string;
   sourceTapePartition?: string;
   targetTapePartition?: string;
+  active?: boolean;
 }
 
 export interface MigrationData {
@@ -101,4 +102,17 @@ export interface Bucket {
   source: 'blackpearl' | 'rio';
   objectCount: number;
   sizeBytes: number;
+}
+
+export interface BucketData {
+  id: string;
+  createdAt: string;
+  lastUpdated: string;
+  timestamp: string;
+  migrationPhaseId: string;
+  bucketName: string;
+  source: 'blackpearl' | 'rio';
+  objectCount: number;
+  sizeBytes: number;
+  userId?: string;
 }

@@ -14,11 +14,13 @@ public class MigrationPhase {
     private LocalDate lastUpdated;
     private String sourceTapePartition;
     private String targetTapePartition;
+    private Boolean active;
 
     public MigrationPhase() {
         this.id = UUID.randomUUID().toString();
         this.createdAt = LocalDate.now();
         this.lastUpdated = LocalDate.now();
+        this.active = true;
     }
 
     // Getters and Setters
@@ -100,5 +102,13 @@ public class MigrationPhase {
 
     public void setTargetTapePartition(String targetTapePartition) {
         this.targetTapePartition = targetTapePartition;
+    }
+
+    public Boolean getActive() {
+        return active;
+    }
+
+    public void setActive(Boolean active) {
+        this.active = active;
     }
 }

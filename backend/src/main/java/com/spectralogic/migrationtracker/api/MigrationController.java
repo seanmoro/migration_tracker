@@ -2,13 +2,16 @@ package com.spectralogic.migrationtracker.api;
 
 import com.spectralogic.migrationtracker.api.dto.Bucket;
 import com.spectralogic.migrationtracker.api.dto.GatherDataRequest;
+import com.spectralogic.migrationtracker.model.BucketData;
 import com.spectralogic.migrationtracker.model.MigrationData;
 import com.spectralogic.migrationtracker.service.BucketService;
 import com.spectralogic.migrationtracker.service.MigrationService;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -68,5 +71,22 @@ public class MigrationController {
             return ResponseEntity.notFound().build();
         }
         return ResponseEntity.ok(bucket);
+    }
+
+    @GetMapping("/bucket-data")
+    public ResponseEntity<List<BucketData>> getBucketData(
+            @RequestParam String phaseId,
+            @RequestParam(required = false) String bucketName,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
+        List<BucketData> data;
+        if (bucketName != null && !bucketName.isEmpty()) {
+            data = service.getBucketDataByPhaseAndBucket(phaseId, bucketName);
+        } else if (dateFrom != null && dateTo != null) {
+            data = service.getBucketDataByPhaseAndDateRange(phaseId, dateFrom, dateTo);
+        } else {
+            data = service.getBucketDataByPhase(phaseId);
+        }
+        return ResponseEntity.ok(data);
     }
 }

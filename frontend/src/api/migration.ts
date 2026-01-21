@@ -1,5 +1,5 @@
 import apiClient from './client';
-import { Bucket, MigrationData } from '../types';
+import { Bucket, BucketData, MigrationData } from '../types';
 
 export const migrationApi = {
   gatherData: async (data: {
@@ -72,6 +72,25 @@ export const migrationApi = {
       }
       console.error('Error fetching bucket size:', error);
       throw error;
+    }
+  },
+
+  getBucketData: async (phaseId: string, bucketName?: string, dateFrom?: string, dateTo?: string): Promise<BucketData[]> => {
+    try {
+      const params: any = { phaseId };
+      if (bucketName) params.bucketName = bucketName;
+      if (dateFrom) params.dateFrom = dateFrom;
+      if (dateTo) params.dateTo = dateTo;
+      
+      const response = await apiClient.get('/migration/bucket-data', { params });
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      console.warn('API returned non-array for bucket data:', response.data);
+      return [];
+    } catch (error) {
+      console.error('Error fetching bucket data:', error);
+      return [];
     }
   },
 };

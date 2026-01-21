@@ -66,4 +66,11 @@ public class PhaseController {
             @RequestParam String databaseType) {
         return ResponseEntity.ok(storageDomainService.getStorageDomains(customerId, databaseType));
     }
+
+    @PatchMapping("/{id}/status")
+    public ResponseEntity<MigrationPhase> toggleStatus(@PathVariable String id, @RequestParam boolean active) {
+        MigrationPhase phase = service.findById(id);
+        phase.setActive(active);
+        return ResponseEntity.ok(service.update(id, phase));
+    }
 }

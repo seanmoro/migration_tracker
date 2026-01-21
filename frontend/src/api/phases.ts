@@ -62,4 +62,11 @@ export const phasesApi = {
     });
     return response.data || { domains: [], tapePartitions: [] };
   },
+
+  toggleStatus: async (id: string, active: boolean): Promise<MigrationPhase> => {
+    const response = await apiClient.patch(`/phases/${id}/status`, null, {
+      params: { active },
+    });
+    return response.data;
+  },
 };

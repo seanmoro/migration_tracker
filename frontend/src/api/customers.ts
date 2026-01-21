@@ -52,4 +52,11 @@ export const customersApi = {
       return [];
     }
   },
+
+  toggleStatus: async (id: string, active: boolean): Promise<Customer> => {
+    const response = await apiClient.patch(`/customers/${id}/status`, null, {
+      params: { active },
+    });
+    return response.data;
+  },
 };

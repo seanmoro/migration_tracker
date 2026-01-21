@@ -229,6 +229,26 @@ export default function Projects() {
                   Manage Phases
                 </button>
                 <button
+                  onClick={() => {
+                    projectsApi.toggleStatus(project.id, !project.active)
+                      .then(() => {
+                        queryClient.invalidateQueries({ queryKey: ['projects'] });
+                        toast.success(`Project marked as ${!project.active ? 'active' : 'inactive'}`);
+                      })
+                      .catch((error: any) => {
+                        toast.error(`Failed to update status: ${error.message || 'Unknown error'}`);
+                      });
+                  }}
+                  className={`px-2 py-1 text-xs rounded ${
+                    project.active
+                      ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
+                      : 'bg-green-100 text-green-800 hover:bg-green-200'
+                  }`}
+                  title={project.active ? 'Mark as inactive' : 'Mark as active'}
+                >
+                  {project.active ? 'Deactivate' : 'Activate'}
+                </button>
+                <button
                   onClick={() => handleEdit(project)}
                   className="p-2 text-gray-600 hover:text-primary-600 hover:bg-primary-50 rounded"
                 >

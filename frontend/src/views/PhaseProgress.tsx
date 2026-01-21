@@ -3,11 +3,13 @@ import { useQuery } from '@tanstack/react-query';
 import { reportsApi } from '../api/reports';
 import { phasesApi } from '../api/phases';
 import { projectsApi } from '../api/projects';
+import { migrationApi } from '../api/migration';
 import ProgressBar from '../components/ProgressBar';
 import PhaseProgressChart from '../components/PhaseProgressChart';
 import ExportButton from '../components/ExportButton';
 import Breadcrumb from '../components/Breadcrumb';
 import { formatBytes, formatNumber, formatDate } from '../utils/format';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 export default function PhaseProgress() {
   const { phaseId } = useParams<{ phaseId: string }>();
@@ -40,6 +42,12 @@ export default function PhaseProgress() {
     queryKey: ['projects', phase?.migrationId],
     queryFn: () => projectsApi.get(phase!.migrationId),
     enabled: !!phase?.migrationId,
+  });
+
+  const { data: bucketData = [] } = useQuery({
+    queryKey: ['bucket-data', phaseId],
+    queryFn: () => migrationApi.getBucketData(phaseId!),
+    enabled: !!phaseId,
   });
 
   if (!phase) {
@@ -128,6 +136,101 @@ export default function PhaseProgress() {
           <PhaseProgressChart data={migrationData} />
         </div>
       )}
+
+      {/* Bucket Size Trends */}
+      {bucketData.length > 0 && (() => {
+        // Group bucket data by bucket name
+        const bucketsByName = new Map<string, typeof bucketData>();
+        bucketData.forEach(bd => {
+          const bucketName = bd.bucketName;
+          if (!bucketsByName.has(bucketName)) {
+            bucketsByName.set(bucketName, []);
+          }
+          bucketsByName.get(bucketName)!.push(bd);
+        });
+
+        // Sort by timestamp for each bucket
+        bucketsByName.forEach((data) => {
+          data.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        });
+
+        // Create chart data - one entry per timestamp with all bucket sizes
+        const timestamps = new Set(bucketData.map(bd => bd.timestamp));
+        const chartData = Array.from(timestamps).sort().map(timestamp => {
+          const entry: any = { date: formatDate(timestamp) };
+          bucketsByName.forEach((data, bucketName) => {
+            const dataPoint = data.find(d => d.timestamp === timestamp);
+            if (dataPoint) {
+              entry[bucketName] = parseFloat((dataPoint.sizeBytes / (1024 * 1024 * 1024)).toFixed(2)); // GB
+            }
+          });
+          return entry;
+        });
+
+        // Get unique colors for buckets
+        const colors = ['#0284c7', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
+
+        return (
+          <div className="card">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Bucket Size Trends</h2>
+            <ResponsiveContainer width="100%" height={400}>
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" />
+                <YAxis tickFormatter={(value) => `${value.toFixed(2)} GB`} />
+                <Tooltip formatter={(value: number) => [`${value.toFixed(2)} GB`, 'Size']} />
+                <Legend />
+                {Array.from(bucketsByName.keys()).map((bucketName, index) => (
+                  <Line
+                    key={bucketName}
+                    type="monotone"
+                    dataKey={bucketName}
+                    stroke={colors[index % colors.length]}
+                    name={bucketName}
+                    strokeWidth={2}
+                  />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+            
+            {/* Bucket Summary Table */}
+            <div className="mt-6 overflow-x-auto">
+              <h3 className="text-lg font-semibold text-gray-900 mb-3">Bucket Summary</h3>
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-2 px-4 font-semibold text-gray-700">Bucket Name</th>
+                    <th className="text-left py-2 px-4 font-semibold text-gray-700">Source</th>
+                    <th className="text-right py-2 px-4 font-semibold text-gray-700">Latest Size</th>
+                    <th className="text-right py-2 px-4 font-semibold text-gray-700">Latest Objects</th>
+                    <th className="text-right py-2 px-4 font-semibold text-gray-700">Data Points</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.from(bucketsByName.entries()).map(([bucketName, data]) => {
+                    const latest = data[data.length - 1];
+                    return (
+                      <tr key={bucketName} className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="py-2 px-4 font-medium">{bucketName}</td>
+                        <td className="py-2 px-4">
+                          <span className={`px-2 py-1 rounded text-xs ${
+                            latest.source === 'blackpearl' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
+                          }`}>
+                            {latest.source === 'blackpearl' ? 'BlackPearl' : 'Rio'}
+                          </span>
+                        </td>
+                        <td className="py-2 px-4 text-right">{formatBytes(latest.sizeBytes)}</td>
+                        <td className="py-2 px-4 text-right">{formatNumber(latest.objectCount)}</td>
+                        <td className="py-2 px-4 text-right">{data.length}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Data Points */}
       <div className="card">

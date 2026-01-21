@@ -55,4 +55,11 @@ export const projectsApi = {
       return [];
     }
   },
+
+  toggleStatus: async (id: string, active: boolean): Promise<MigrationProject> => {
+    const response = await apiClient.patch(`/projects/${id}/status`, null, {
+      params: { active },
+    });
+    return response.data;
+  },
 };

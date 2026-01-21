@@ -298,6 +298,26 @@ export default function Phases() {
                   <span>Gather Data</span>
                 </button>
                 <button
+                  onClick={() => {
+                    phasesApi.toggleStatus(phase.id, !(phase.active ?? true))
+                      .then(() => {
+                        queryClient.invalidateQueries({ queryKey: ['phases', projectId] });
+                        toast.success(`Phase marked as ${!(phase.active ?? true) ? 'active' : 'inactive'}`);
+                      })
+                      .catch((error: any) => {
+                        toast.error(`Failed to update status: ${error.message || 'Unknown error'}`);
+                      });
+                  }}
+                  className={`px-2 py-1 text-xs rounded ${
+                    (phase.active ?? true)
+                      ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
+                      : 'bg-green-100 text-green-800 hover:bg-green-200'
+                  }`}
+                  title={(phase.active ?? true) ? 'Mark as inactive' : 'Mark as active'}
+                >
+                  {(phase.active ?? true) ? 'Deactivate' : 'Activate'}
+                </button>
+                <button
                   onClick={() => navigate(`/phases/${phase.id}/progress`)}
                   className="p-2 text-gray-600 hover:text-primary-600 hover:bg-primary-50 rounded"
                   title="View Progress"

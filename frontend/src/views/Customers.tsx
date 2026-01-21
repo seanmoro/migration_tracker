@@ -135,6 +135,26 @@ export default function Customers() {
                     <td className="py-3 px-4">
                       <div className="flex items-center justify-end space-x-2">
                         <button
+                          onClick={() => {
+                            customersApi.toggleStatus(customer.id, !customer.active)
+                              .then(() => {
+                                queryClient.invalidateQueries({ queryKey: ['customers'] });
+                                toast.success(`Customer marked as ${!customer.active ? 'active' : 'inactive'}`);
+                              })
+                              .catch((error: any) => {
+                                toast.error(`Failed to update status: ${error.message || 'Unknown error'}`);
+                              });
+                          }}
+                          className={`px-3 py-1 text-xs rounded ${
+                            customer.active
+                              ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
+                              : 'bg-green-100 text-green-800 hover:bg-green-200'
+                          }`}
+                          title={customer.active ? 'Mark as inactive' : 'Mark as active'}
+                        >
+                          {customer.active ? 'Deactivate' : 'Activate'}
+                        </button>
+                        <button
                           onClick={() => handleEdit(customer)}
                           className="p-2 text-gray-600 hover:text-primary-600 hover:bg-primary-50 rounded"
                         >

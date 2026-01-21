@@ -51,4 +51,11 @@ public class ProjectController {
         service.delete(id);
         return ResponseEntity.noContent().build();
     }
+
+    @PatchMapping("/{id}/status")
+    public ResponseEntity<MigrationProject> toggleStatus(@PathVariable String id, @RequestParam boolean active) {
+        MigrationProject project = service.findById(id);
+        project.setActive(active);
+        return ResponseEntity.ok(service.update(id, project));
+    }
 }

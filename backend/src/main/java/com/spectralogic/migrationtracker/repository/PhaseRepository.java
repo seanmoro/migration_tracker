@@ -43,6 +43,13 @@ public class PhaseRepository {
                 phase.setSourceTapePartition(null);
             }
             phase.setTargetTapePartition(rs.getString("target_tape_partition"));
+            // Handle active field (may not exist in older databases)
+            try {
+                phase.setActive(rs.getBoolean("active"));
+            } catch (SQLException e) {
+                // Column doesn't exist yet, default to true
+                phase.setActive(true);
+            }
             return phase;
         }
     };
@@ -50,6 +57,14 @@ public class PhaseRepository {
     public List<MigrationPhase> findByProjectId(String projectId) {
         return jdbcTemplate.query(
             "SELECT * FROM migration_phase WHERE migration_id = ? ORDER BY name",
+            rowMapper,
+            projectId
+        );
+    }
+
+    public List<MigrationPhase> findActiveByProjectId(String projectId) {
+        return jdbcTemplate.query(
+            "SELECT * FROM migration_phase WHERE migration_id = ? AND (active IS NULL OR active = 1) ORDER BY name",
             rowMapper,
             projectId
         );
@@ -86,10 +101,22 @@ public class PhaseRepository {
             }
         }
         
+        // Ensure active column exists (for existing databases)
+        try {
+            jdbcTemplate.query("SELECT active FROM migration_phase LIMIT 1", (rs) -> null);
+        } catch (Exception e) {
+            // Column doesn't exist, add it
+            try {
+                jdbcTemplate.execute("ALTER TABLE migration_phase ADD COLUMN active INTEGER DEFAULT 1");
+            } catch (Exception ex) {
+                // Column might already exist or table doesn't exist, ignore
+            }
+        }
+        
         if (phase.getId() == null || findById(phase.getId()).isEmpty()) {
             // Insert
             jdbcTemplate.update(
-                "INSERT INTO migration_phase (id, name, type, migration_id, source, target, created_at, last_updated, source_tape_partition, target_tape_partition) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO migration_phase (id, name, type, migration_id, source, target, created_at, last_updated, source_tape_partition, target_tape_partition, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 phase.getId(),
                 phase.getName(),
                 phase.getType(),
@@ -99,13 +126,14 @@ public class PhaseRepository {
                 phase.getCreatedAt(),
                 phase.getLastUpdated(),
                 phase.getSourceTapePartition(),
-                phase.getTargetTapePartition()
+                phase.getTargetTapePartition(),
+                phase.getActive() != null ? phase.getActive() : true
             );
         } else {
             // Update
             phase.setLastUpdated(LocalDate.now());
             jdbcTemplate.update(
-                "UPDATE migration_phase SET name = ?, type = ?, source = ?, target = ?, last_updated = ?, source_tape_partition = ?, target_tape_partition = ? WHERE id = ?",
+                "UPDATE migration_phase SET name = ?, type = ?, source = ?, target = ?, last_updated = ?, source_tape_partition = ?, target_tape_partition = ?, active = ? WHERE id = ?",
                 phase.getName(),
                 phase.getType(),
                 phase.getSource(),
@@ -113,6 +141,7 @@ public class PhaseRepository {
                 phase.getLastUpdated(),
                 phase.getSourceTapePartition(),
                 phase.getTargetTapePartition(),
+                phase.getActive() != null ? phase.getActive() : true,
                 phase.getId()
             );
         }
