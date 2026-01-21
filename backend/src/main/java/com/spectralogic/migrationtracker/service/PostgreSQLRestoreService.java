@@ -977,6 +977,7 @@ public class PostgreSQLRestoreService {
             try {
                 List<String> command = new ArrayList<>();
                 command.add("sudo");
+                command.add("-n"); // Non-interactive mode - fail if password required
                 command.add("systemctl");
                 command.add("stop");
                 command.add(serviceName);
@@ -1191,6 +1192,7 @@ public class PostgreSQLRestoreService {
         try {
             List<String> command = new ArrayList<>();
             command.add("sudo");
+            command.add("-n"); // Non-interactive mode - fail if password required
             command.add("systemctl");
             command.add("start");
             command.add("postgresql");
@@ -1272,6 +1274,7 @@ public class PostgreSQLRestoreService {
             try {
                 List<String> command = new ArrayList<>();
                 command.add("sudo");
+                command.add("-n"); // Non-interactive mode - fail if password required
                 command.add("systemctl");
                 command.add("start");
                 command.add(serviceName);
