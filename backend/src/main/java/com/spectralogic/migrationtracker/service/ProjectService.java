@@ -61,9 +61,9 @@ public class ProjectService {
 
     @Transactional
     public void delete(String id) {
-        // Cascade delete: deactivate all phases for this project
+        // Cascade delete: deactivate all phases for this project (including inactive ones)
         logger.info("Deleting project {}. Cascading deactivation to phases.", id);
-        List<com.spectralogic.migrationtracker.model.MigrationPhase> phases = phaseRepository.findByProjectId(id);
+        List<com.spectralogic.migrationtracker.model.MigrationPhase> phases = phaseRepository.findByProjectIdIncludingInactive(id);
         for (com.spectralogic.migrationtracker.model.MigrationPhase phase : phases) {
             if (phase.getActive() == null || phase.getActive()) {
                 phase.setActive(false);
