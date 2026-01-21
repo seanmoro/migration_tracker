@@ -765,7 +765,7 @@ public class PostgreSQLRestoreService {
 
             // Stop PostgreSQL if running
             logger.info("Stopping PostgreSQL service...");
-            boolean postgresStopped = stopPostgreSQL();
+            boolean postgresStopped = stopPostgreSQL(pgDataDir);
             
             // Wait a moment and verify PostgreSQL actually stopped
             if (postgresStopped) {
@@ -778,14 +778,63 @@ public class PostgreSQLRestoreService {
             
             // Check if PostgreSQL is still running
             if (isPostgreSQLRunning()) {
-                logger.error("PostgreSQL is still running after stop attempt. Please stop it manually before restoring.");
-                result.setSuccess(false);
-                result.setError("PostgreSQL must be stopped before restoring data directory backup. " +
-                        "The automatic stop failed because sudo requires a password. " +
-                        "Please stop PostgreSQL manually with: sudo systemctl stop postgresql " +
-                        "and try again. To enable automatic stopping, configure passwordless sudo: " +
-                        "echo 'your_user ALL=(ALL) NOPASSWD: /bin/systemctl stop postgresql, /bin/systemctl start postgresql' | sudo tee /etc/sudoers.d/migration-tracker");
-                return result;
+                logger.error("PostgreSQL is still running after stop attempt.");
+                
+                // Try one more time with pg_ctl using the actual data directory
+                logger.info("Attempting to stop PostgreSQL using pg_ctl with data directory: {}", pgDataDir);
+                boolean pgCtlStopped = false;
+                if (Files.exists(pgDataDir.resolve("postmaster.pid"))) {
+                    // PostgreSQL is definitely running (postmaster.pid exists)
+                    try {
+                        List<String> command = new ArrayList<>();
+                        command.add("pg_ctl");
+                        command.add("stop");
+                        command.add("-D");
+                        command.add(pgDataDir.toAbsolutePath().toString());
+                        command.add("-m");
+                        command.add("fast"); // Fast shutdown
+                        
+                        ProcessBuilder pb = new ProcessBuilder(command);
+                        pb.redirectErrorStream(true);
+                        
+                        Process process = pb.start();
+                        StringBuilder output = new StringBuilder();
+                        try (BufferedReader reader = new BufferedReader(
+                                new InputStreamReader(process.getInputStream()))) {
+                            String line;
+                            while ((line = reader.readLine()) != null) {
+                                output.append(line).append("\n");
+                                logger.debug("pg_ctl stop: {}", line);
+                            }
+                        }
+                        
+                        int exitCode = process.waitFor();
+                        if (exitCode == 0) {
+                            logger.info("PostgreSQL stopped via pg_ctl");
+                            pgCtlStopped = true;
+                            // Wait for PostgreSQL to fully stop
+                            Thread.sleep(2000);
+                        } else {
+                            logger.warn("pg_ctl stop failed with exit code: {}, output: {}", exitCode, output.toString());
+                        }
+                    } catch (Exception e) {
+                        logger.warn("pg_ctl stop failed: {}", e.getMessage());
+                    }
+                }
+                
+                // Check again if PostgreSQL is still running
+                if (!pgCtlStopped && isPostgreSQLRunning()) {
+                    logger.error("PostgreSQL is still running. Cannot proceed safely.");
+                    result.setSuccess(false);
+                    result.setError("PostgreSQL must be stopped before restoring data directory backup. " +
+                            "The automatic stop failed because sudo requires a password. " +
+                            "Please stop PostgreSQL manually with: sudo systemctl stop postgresql " +
+                            "and try again. To enable automatic stopping, configure passwordless sudo: " +
+                            "echo 'your_user ALL=(ALL) NOPASSWD: /bin/systemctl stop postgresql, /bin/systemctl start postgresql' | sudo tee /etc/sudoers.d/migration-tracker");
+                    return result;
+                } else if (pgCtlStopped) {
+                    logger.info("PostgreSQL stopped successfully via pg_ctl");
+                }
             } else {
                 if (postgresStopped) {
                     logger.info("PostgreSQL stopped successfully");
@@ -895,8 +944,9 @@ public class PostgreSQLRestoreService {
     /**
      * Stop PostgreSQL service
      * Tries systemctl first, then pg_ctl as fallback
+     * @param dataDir Optional data directory path for pg_ctl fallback
      */
-    private boolean stopPostgreSQL() {
+    private boolean stopPostgreSQL(Path dataDir) {
         // First check if sudo works without password (non-interactive)
         if (!canUseSudoNonInteractive()) {
             logger.warn("sudo requires password. Cannot stop PostgreSQL automatically.");
@@ -1005,14 +1055,14 @@ public class PostgreSQLRestoreService {
             }
         }
 
-        // Try pg_ctl as fallback (works if we know the data directory)
-        try {
-            // Try to find pg_ctl and data directory
-            List<String> command = new ArrayList<>();
-            command.add("pg_ctl");
-            command.add("stop");
-            command.add("-D");
-            command.add("/var/lib/postgresql/14/main"); // Try common location
+        // Try pg_ctl as fallback (works if we know the data directory and have permissions)
+        if (dataDir != null && Files.exists(dataDir)) {
+            try {
+                List<String> command = new ArrayList<>();
+                command.add("pg_ctl");
+                command.add("stop");
+                command.add("-D");
+                command.add(dataDir.toAbsolutePath().toString());
             
             ProcessBuilder pb = new ProcessBuilder(command);
             pb.redirectErrorStream(true);
@@ -1025,13 +1075,53 @@ public class PostgreSQLRestoreService {
                 }
             }
             
-            int exitCode = process.waitFor();
-            if (exitCode == 0) {
-                logger.info("PostgreSQL stopped via pg_ctl");
-                return true;
+                int exitCode = process.waitFor();
+                if (exitCode == 0) {
+                    logger.info("PostgreSQL stopped via pg_ctl using data directory: {}", dataDir);
+                    return true;
+                } else {
+                    logger.debug("pg_ctl stop failed with exit code: {}", exitCode);
+                }
+            } catch (Exception e) {
+                logger.debug("pg_ctl stop failed for data directory {}: {}", dataDir, e.getMessage());
             }
-        } catch (Exception e) {
-            logger.debug("pg_ctl stop failed: {}", e.getMessage());
+        }
+        
+        // Try pg_ctl with common locations as last resort
+        String[] commonDataDirs = {"/var/lib/postgresql/14/main", "/var/lib/postgresql/15/main", 
+                                   "/var/lib/postgresql/16/main", "/var/lib/postgresql/data"};
+        for (String dataDirPath : commonDataDirs) {
+            try {
+                Path testPath = Paths.get(dataDirPath);
+                if (!Files.exists(testPath) || !Files.exists(testPath.resolve("PG_VERSION"))) {
+                    continue; // Skip if doesn't exist or not a valid data directory
+                }
+                
+                List<String> command = new ArrayList<>();
+                command.add("pg_ctl");
+                command.add("stop");
+                command.add("-D");
+                command.add(dataDirPath);
+                
+                ProcessBuilder pb = new ProcessBuilder(command);
+                pb.redirectErrorStream(true);
+                
+                Process process = pb.start();
+                try (BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(process.getInputStream()))) {
+                    while (reader.readLine() != null) {
+                        // Consume output
+                    }
+                }
+                
+                int exitCode = process.waitFor();
+                if (exitCode == 0) {
+                    logger.info("PostgreSQL stopped via pg_ctl using common location: {}", dataDirPath);
+                    return true;
+                }
+            } catch (Exception e) {
+                logger.debug("pg_ctl stop failed for {}: {}", dataDirPath, e.getMessage());
+            }
         }
 
         logger.warn("Could not stop PostgreSQL via any command. It may already be stopped, or sudo requires a password.");
