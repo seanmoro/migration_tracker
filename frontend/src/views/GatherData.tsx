@@ -130,9 +130,13 @@ export default function GatherData() {
   // Check if date already has data
   const dateHasData = phaseData.some(d => d.timestamp === date);
 
+  // Fetch buckets for the selected customer and database type
+  // Use effectiveCustomerId (from selected customer or from selected project)
+  // Default databaseType to 'blackpearl' if not set
   const { data: buckets = [], isLoading: bucketsLoading } = useQuery({
-    queryKey: ['buckets'],
-    queryFn: () => migrationApi.getBuckets(),
+    queryKey: ['buckets', effectiveCustomerId, effectiveDatabaseType],
+    queryFn: () => migrationApi.getBucketsForCustomer(effectiveCustomerId || '', effectiveDatabaseType),
+    enabled: !!effectiveCustomerId && !!effectiveDatabaseType,
   });
 
   const filteredBuckets = buckets.filter(bucket =>
