@@ -60,9 +60,10 @@ public class DashboardService {
     public List<PhaseProgress> getActivePhases() {
         List<PhaseProgress> progressList = new ArrayList<>();
         
-        // Get all phases from database (increased limit to show more)
+        // Get only active phases from database (increased limit to show more)
+        // Filter by active = 1 (or active IS NULL for backward compatibility)
         List<MigrationPhase> allPhases = jdbcTemplate.query(
-            "SELECT * FROM migration_phase ORDER BY created_at DESC LIMIT 100",
+            "SELECT * FROM migration_phase WHERE (active IS NULL OR active = 1) ORDER BY created_at DESC LIMIT 100",
             (rs, rowNum) -> {
                 MigrationPhase phase = new MigrationPhase();
                 phase.setId(rs.getString("id"));
@@ -98,14 +99,14 @@ public class DashboardService {
     public List<CustomerPhases> getActivePhasesByCustomer() {
         List<CustomerPhases> customerPhasesList = new ArrayList<>();
         
-        // Get all phases with customer and project info
+        // Get only active phases with customer and project info
         List<Map<String, Object>> phaseData = jdbcTemplate.query(
             "SELECT mp.id as phase_id, mp.name as phase_name, mp.migration_id as project_id, " +
             "pj.name as project_name, pj.customer_id, c.name as customer_name " +
             "FROM migration_phase mp " +
             "JOIN migration_project pj ON mp.migration_id = pj.id " +
             "JOIN customer c ON pj.customer_id = c.id " +
-            "WHERE c.active = 1 AND pj.active = 1 " +
+            "WHERE c.active = 1 AND pj.active = 1 AND (mp.active IS NULL OR mp.active = 1) " +
             "ORDER BY c.name, pj.name, mp.name",
             (rs, rowNum) -> {
                 Map<String, Object> data = new HashMap<>();
@@ -187,9 +188,10 @@ public class DashboardService {
     public List<PhaseProgress> getPhasesNeedingAttention() {
         List<PhaseProgress> attentionList = new ArrayList<>();
         
-        // Get all phases and check their latest progress
-        List<MigrationPhase> allPhases = jdbcTemplate.query(
-            "SELECT * FROM migration_phase ORDER BY created_at DESC",
+        // Get only active phases and check their latest progress
+        // Filter by active = 1 (or active IS NULL for backward compatibility)
+        List<MigrationPhase> activePhases = jdbcTemplate.query(
+            "SELECT * FROM migration_phase WHERE (active IS NULL OR active = 1) ORDER BY created_at DESC",
             (rs, rowNum) -> {
                 MigrationPhase phase = new MigrationPhase();
                 phase.setId(rs.getString("id"));
@@ -198,7 +200,7 @@ public class DashboardService {
             }
         );
 
-        for (MigrationPhase phase : allPhases) {
+        for (MigrationPhase phase : activePhases) {
             try {
                 PhaseProgress progress = reportService.getPhaseProgress(phase.getId());
                 // Only include phases with progress < 50%
