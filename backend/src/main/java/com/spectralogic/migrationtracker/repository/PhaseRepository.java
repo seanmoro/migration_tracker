@@ -20,8 +20,10 @@ public class PhaseRepository {
         this.jdbcTemplate = jdbcTemplate;
     }
 
+    @SuppressWarnings("null")
     private final RowMapper<MigrationPhase> rowMapper = new RowMapper<MigrationPhase>() {
         @Override
+        @SuppressWarnings("null")
         public MigrationPhase mapRow(ResultSet rs, int rowNum) throws SQLException {
             MigrationPhase phase = new MigrationPhase();
             phase.setId(rs.getString("id"));
@@ -54,6 +56,7 @@ public class PhaseRepository {
         }
     };
 
+    @SuppressWarnings("null")
     public List<MigrationPhase> findByProjectId(String projectId) {
         return jdbcTemplate.query(
             "SELECT * FROM migration_phase WHERE migration_id = ? AND (active IS NULL OR active = 1) ORDER BY name",
@@ -62,6 +65,7 @@ public class PhaseRepository {
         );
     }
 
+    @SuppressWarnings("null")
     public List<MigrationPhase> findByProjectIdIncludingInactive(String projectId) {
         return jdbcTemplate.query(
             "SELECT * FROM migration_phase WHERE migration_id = ? ORDER BY name",
@@ -70,6 +74,7 @@ public class PhaseRepository {
         );
     }
 
+    @SuppressWarnings("null")
     public List<MigrationPhase> findActiveByProjectId(String projectId) {
         return jdbcTemplate.query(
             "SELECT * FROM migration_phase WHERE migration_id = ? AND (active IS NULL OR active = 1) ORDER BY name",
@@ -78,6 +83,7 @@ public class PhaseRepository {
         );
     }
 
+    @SuppressWarnings("null")
     public Optional<MigrationPhase> findById(String id) {
         List<MigrationPhase> results = jdbcTemplate.query(
             "SELECT * FROM migration_phase WHERE id = ?",
@@ -87,6 +93,7 @@ public class PhaseRepository {
         return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
     }
 
+    @SuppressWarnings("null")
     public List<MigrationPhase> searchByProjectIdAndName(String projectId, String name) {
         return jdbcTemplate.query(
             "SELECT * FROM migration_phase WHERE migration_id = ? AND name LIKE ? AND (active IS NULL OR active = 1) ORDER BY name",
@@ -96,6 +103,7 @@ public class PhaseRepository {
         );
     }
 
+    @SuppressWarnings("null")
     public List<MigrationPhase> searchByProjectIdAndNameIncludingInactive(String projectId, String name) {
         return jdbcTemplate.query(
             "SELECT * FROM migration_phase WHERE migration_id = ? AND name LIKE ? ORDER BY name",

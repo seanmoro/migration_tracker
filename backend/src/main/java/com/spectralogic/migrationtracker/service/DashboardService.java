@@ -5,7 +5,6 @@ import com.spectralogic.migrationtracker.api.dto.DashboardStats;
 import com.spectralogic.migrationtracker.api.dto.PhaseProgress;
 import com.spectralogic.migrationtracker.api.dto.ProjectPhases;
 import com.spectralogic.migrationtracker.model.MigrationPhase;
-import com.spectralogic.migrationtracker.repository.PhaseRepository;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -17,12 +16,10 @@ import java.util.Map;
 @Service
 public class DashboardService {
 
-    private final PhaseRepository phaseRepository;
     private final ReportService reportService;
     private final JdbcTemplate jdbcTemplate;
 
-    public DashboardService(PhaseRepository phaseRepository, ReportService reportService, JdbcTemplate jdbcTemplate) {
-        this.phaseRepository = phaseRepository;
+    public DashboardService(ReportService reportService, JdbcTemplate jdbcTemplate) {
         this.reportService = reportService;
         this.jdbcTemplate = jdbcTemplate;
     }

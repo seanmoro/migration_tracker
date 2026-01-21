@@ -20,8 +20,10 @@ public class ProjectRepository {
         this.jdbcTemplate = jdbcTemplate;
     }
 
+    @SuppressWarnings("null")
     private final RowMapper<MigrationProject> rowMapper = new RowMapper<MigrationProject>() {
         @Override
+        @SuppressWarnings("null")
         public MigrationProject mapRow(ResultSet rs, int rowNum) throws SQLException {
             MigrationProject project = new MigrationProject();
             project.setId(rs.getString("id"));
@@ -38,6 +40,7 @@ public class ProjectRepository {
         }
     };
 
+    @SuppressWarnings("null")
     public List<MigrationProject> findAll() {
         return jdbcTemplate.query(
             "SELECT * FROM migration_project WHERE active = 1 ORDER BY name",
@@ -45,6 +48,7 @@ public class ProjectRepository {
         );
     }
 
+    @SuppressWarnings("null")
     public List<MigrationProject> findAllIncludingInactive() {
         return jdbcTemplate.query(
             "SELECT * FROM migration_project ORDER BY name",
@@ -52,6 +56,7 @@ public class ProjectRepository {
         );
     }
 
+    @SuppressWarnings("null")
     public List<MigrationProject> findByCustomerId(String customerId) {
         return jdbcTemplate.query(
             "SELECT * FROM migration_project WHERE customer_id = ? AND active = 1 ORDER BY name",
@@ -60,6 +65,7 @@ public class ProjectRepository {
         );
     }
 
+    @SuppressWarnings("null")
     public List<MigrationProject> findByCustomerIdIncludingInactive(String customerId) {
         return jdbcTemplate.query(
             "SELECT * FROM migration_project WHERE customer_id = ? ORDER BY name",
@@ -68,6 +74,7 @@ public class ProjectRepository {
         );
     }
 
+    @SuppressWarnings("null")
     public Optional<MigrationProject> findById(String id) {
         List<MigrationProject> results = jdbcTemplate.query(
             "SELECT * FROM migration_project WHERE id = ?",
@@ -77,6 +84,7 @@ public class ProjectRepository {
         return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
     }
 
+    @SuppressWarnings("null")
     public List<MigrationProject> searchByName(String name) {
         return jdbcTemplate.query(
             "SELECT * FROM migration_project WHERE name LIKE ? AND active = 1 ORDER BY name",
@@ -85,6 +93,7 @@ public class ProjectRepository {
         );
     }
 
+    @SuppressWarnings("null")
     public List<MigrationProject> searchByNameIncludingInactive(String name) {
         return jdbcTemplate.query(
             "SELECT * FROM migration_project WHERE name LIKE ? ORDER BY name",

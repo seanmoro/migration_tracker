@@ -61,6 +61,8 @@ public class DatabaseConfig {
 
     @Bean
     public JdbcTemplate jdbcTemplate(DataSource dataSource) {
-        return new JdbcTemplate(dataSource);
+        @SuppressWarnings("null")
+        JdbcTemplate template = new JdbcTemplate(dataSource);
+        return template;
     }
 }

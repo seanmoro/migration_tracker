@@ -55,8 +55,10 @@ public class BucketDataRepository {
         }
     }
 
+    @SuppressWarnings("null")
     private final RowMapper<BucketData> rowMapper = new RowMapper<BucketData>() {
         @Override
+        @SuppressWarnings("null")
         public BucketData mapRow(ResultSet rs, int rowNum) throws SQLException {
             BucketData data = new BucketData();
             data.setId(rs.getString("id"));
@@ -76,6 +78,7 @@ public class BucketDataRepository {
         }
     };
 
+    @SuppressWarnings("null")
     public List<BucketData> findByPhaseId(String phaseId) {
         return jdbcTemplate.query(
             "SELECT * FROM bucket_data WHERE migration_phase_id = ? ORDER BY timestamp DESC, bucket_name",
@@ -84,6 +87,7 @@ public class BucketDataRepository {
         );
     }
 
+    @SuppressWarnings("null")
     public List<BucketData> findByPhaseIdAndBucketName(String phaseId, String bucketName) {
         return jdbcTemplate.query(
             "SELECT * FROM bucket_data WHERE migration_phase_id = ? AND bucket_name = ? ORDER BY timestamp DESC",
@@ -93,6 +97,7 @@ public class BucketDataRepository {
         );
     }
 
+    @SuppressWarnings("null")
     public List<BucketData> findByPhaseIdAndDateRange(String phaseId, LocalDate from, LocalDate to) {
         return jdbcTemplate.query(
             "SELECT * FROM bucket_data WHERE migration_phase_id = ? AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp DESC, bucket_name",
@@ -103,6 +108,7 @@ public class BucketDataRepository {
         );
     }
 
+    @SuppressWarnings("null")
     public Optional<BucketData> findById(String id) {
         List<BucketData> results = jdbcTemplate.query(
             "SELECT * FROM bucket_data WHERE id = ?",
@@ -112,6 +118,7 @@ public class BucketDataRepository {
         return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
     }
 
+    @SuppressWarnings("null")
     public List<BucketData> findByBucketName(String bucketName) {
         return jdbcTemplate.query(
             "SELECT * FROM bucket_data WHERE bucket_name = ? ORDER BY timestamp DESC",

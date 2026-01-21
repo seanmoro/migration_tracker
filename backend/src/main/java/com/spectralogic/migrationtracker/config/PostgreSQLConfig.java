@@ -82,11 +82,15 @@ public class PostgreSQLConfig {
         return dataSource;
     }
 
+    @SuppressWarnings("null")
     public JdbcTemplate getBlackPearlJdbcTemplate() {
-        return new JdbcTemplate(getBlackPearlDataSource());
+        DataSource ds = getBlackPearlDataSource();
+        return new JdbcTemplate(ds);
     }
 
+    @SuppressWarnings("null")
     public JdbcTemplate getRioJdbcTemplate() {
-        return new JdbcTemplate(getRioDataSource());
+        DataSource ds = getRioDataSource();
+        return new JdbcTemplate(ds);
     }
 }

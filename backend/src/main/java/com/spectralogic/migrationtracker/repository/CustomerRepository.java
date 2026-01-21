@@ -20,8 +20,10 @@ public class CustomerRepository {
         this.jdbcTemplate = jdbcTemplate;
     }
 
+    @SuppressWarnings("null")
     private final RowMapper<Customer> rowMapper = new RowMapper<Customer>() {
         @Override
+        @SuppressWarnings("null")
         public Customer mapRow(ResultSet rs, int rowNum) throws SQLException {
             Customer customer = new Customer();
             customer.setId(rs.getString("id"));
@@ -47,6 +49,7 @@ public class CustomerRepository {
         }
     };
 
+    @SuppressWarnings("null")
     public List<Customer> findAll() {
         return jdbcTemplate.query(
             "SELECT * FROM customer WHERE active = 1 ORDER BY name",
@@ -54,6 +57,7 @@ public class CustomerRepository {
         );
     }
 
+    @SuppressWarnings("null")
     public List<Customer> findAllIncludingInactive() {
         return jdbcTemplate.query(
             "SELECT * FROM customer ORDER BY name",
@@ -61,6 +65,7 @@ public class CustomerRepository {
         );
     }
 
+    @SuppressWarnings("null")
     public Optional<Customer> findById(String id) {
         List<Customer> results = jdbcTemplate.query(
             "SELECT * FROM customer WHERE id = ?",
@@ -70,6 +75,7 @@ public class CustomerRepository {
         return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
     }
 
+    @SuppressWarnings("null")
     public List<Customer> searchByName(String name) {
         return jdbcTemplate.query(
             "SELECT * FROM customer WHERE name LIKE ? AND active = 1 ORDER BY name",
@@ -78,6 +84,7 @@ public class CustomerRepository {
         );
     }
 
+    @SuppressWarnings("null")
     public List<Customer> searchByNameIncludingInactive(String name) {
         return jdbcTemplate.query(
             "SELECT * FROM customer WHERE name LIKE ? ORDER BY name",

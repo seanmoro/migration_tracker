@@ -20,8 +20,10 @@ public class MigrationDataRepository {
         this.jdbcTemplate = jdbcTemplate;
     }
 
+    @SuppressWarnings("null")
     private final RowMapper<MigrationData> rowMapper = new RowMapper<MigrationData>() {
         @Override
+        @SuppressWarnings("null")
         public MigrationData mapRow(ResultSet rs, int rowNum) throws SQLException {
             MigrationData data = new MigrationData();
             data.setId(rs.getString("id"));
@@ -68,6 +70,7 @@ public class MigrationDataRepository {
         }
     };
 
+    @SuppressWarnings("null")
     public List<MigrationData> findByPhaseId(String phaseId) {
         return jdbcTemplate.query(
             "SELECT * FROM migration_data WHERE migration_phase_id = ? ORDER BY timestamp DESC",
@@ -76,6 +79,7 @@ public class MigrationDataRepository {
         );
     }
 
+    @SuppressWarnings("null")
     public List<MigrationData> findByPhaseIdAndDateRange(String phaseId, LocalDate from, LocalDate to) {
         return jdbcTemplate.query(
             "SELECT * FROM migration_data WHERE migration_phase_id = ? AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp DESC",
@@ -86,6 +90,7 @@ public class MigrationDataRepository {
         );
     }
 
+    @SuppressWarnings("null")
     public Optional<MigrationData> findById(String id) {
         List<MigrationData> results = jdbcTemplate.query(
             "SELECT * FROM migration_data WHERE id = ?",
@@ -95,6 +100,7 @@ public class MigrationDataRepository {
         return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
     }
 
+    @SuppressWarnings("null")
     public Optional<MigrationData> findLatestByPhaseId(String phaseId) {
         List<MigrationData> results = jdbcTemplate.query(
             "SELECT * FROM migration_data WHERE migration_phase_id = ? ORDER BY timestamp DESC LIMIT 1",
@@ -104,6 +110,7 @@ public class MigrationDataRepository {
         return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
     }
 
+    @SuppressWarnings("null")
     public Optional<MigrationData> findReferenceByPhaseId(String phaseId) {
         List<MigrationData> results = jdbcTemplate.query(
             "SELECT * FROM migration_data WHERE migration_phase_id = ? AND type = 'REFERENCE' ORDER BY timestamp DESC LIMIT 1",

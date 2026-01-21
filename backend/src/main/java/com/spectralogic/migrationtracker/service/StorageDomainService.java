@@ -183,10 +183,12 @@ public class StorageDomainService {
                             }
                             
                             // Query distinct values
+                            @SuppressWarnings("null")
                             List<String> values = jdbc.query(
                                 String.format("SELECT DISTINCT %s FROM %s.%s WHERE %s IS NOT NULL AND %s != '' ORDER BY %s", 
                                     columnName, schema, tableName, columnName, columnName, columnName),
                                 (rs, rowNum) -> {
+                                    @SuppressWarnings("null")
                                     String value = rs.getString(columnName);
                                     return value != null ? value : "";
                                 }
@@ -225,10 +227,12 @@ public class StorageDomainService {
                             
                             for (String columnName : domainColumns) {
                                 try {
+                                    @SuppressWarnings("null")
                                     List<String> values = jdbc.query(
                                         String.format("SELECT DISTINCT %s FROM %s.%s WHERE %s IS NOT NULL AND %s != '' ORDER BY %s LIMIT 50", 
                                             columnName, schema, tableName, columnName, columnName, columnName),
                                         (rs, rowNum) -> {
+                                            @SuppressWarnings("null")
                                             String value = rs.getString(columnName);
                                             return value != null ? value : "";
                                         }
@@ -350,10 +354,12 @@ public class StorageDomainService {
                                     }
                                     
                                     // Query distinct values
+                                    @SuppressWarnings("null")
                                     List<String> values = jdbc.query(
                                         String.format("SELECT DISTINCT %s FROM %s.%s WHERE %s IS NOT NULL AND %s != '' ORDER BY %s", 
                                             columnName, schema, tableName, columnName, columnName, columnName),
                                         (rs, rowNum) -> {
+                                            @SuppressWarnings("null")
                                             String value = rs.getString(columnName);
                                             return value != null ? value : "";
                                         }

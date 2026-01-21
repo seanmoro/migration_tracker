@@ -28,7 +28,6 @@ public class ReportService {
         MigrationPhase phase = phaseRepository.findById(phaseId)
             .orElseThrow(() -> new RuntimeException("Phase not found: " + phaseId));
 
-        List<MigrationData> dataPoints = dataRepository.findByPhaseId(phaseId);
         Optional<MigrationData> reference = dataRepository.findReferenceByPhaseId(phaseId);
         Optional<MigrationData> latest = dataRepository.findLatestByPhaseId(phaseId);
 
