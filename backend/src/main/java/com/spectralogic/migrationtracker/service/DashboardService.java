@@ -27,9 +27,9 @@ public class DashboardService {
     public DashboardStats getStats() {
         DashboardStats stats = new DashboardStats();
         
-        // Count active phases
+        // Count only active phases
         Integer activePhases = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM migration_phase",
+            "SELECT COUNT(*) FROM migration_phase WHERE (active IS NULL OR active = 1)",
             Integer.class
         );
         stats.setActiveMigrations(activePhases != null ? activePhases : 0);
