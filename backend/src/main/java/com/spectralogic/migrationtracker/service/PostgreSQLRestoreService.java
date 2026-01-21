@@ -766,18 +766,32 @@ public class PostgreSQLRestoreService {
             // Stop PostgreSQL if running
             logger.info("Stopping PostgreSQL service...");
             boolean postgresStopped = stopPostgreSQL();
-            if (!postgresStopped) {
-                // Check if PostgreSQL is already stopped
-                if (isPostgreSQLRunning()) {
-                    logger.warn("PostgreSQL is still running. Please stop it manually before restoring.");
-                    result.setSuccess(false);
-                    result.setError("PostgreSQL must be stopped before restoring data directory backup. Please stop PostgreSQL manually and try again.");
-                    return result;
+            
+            // Wait a moment and verify PostgreSQL actually stopped
+            if (postgresStopped) {
+                try {
+                    Thread.sleep(2000); // Wait for PostgreSQL to fully stop
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            
+            // Check if PostgreSQL is still running
+            if (isPostgreSQLRunning()) {
+                logger.error("PostgreSQL is still running after stop attempt. Please stop it manually before restoring.");
+                result.setSuccess(false);
+                result.setError("PostgreSQL must be stopped before restoring data directory backup. " +
+                        "The automatic stop failed because sudo requires a password. " +
+                        "Please stop PostgreSQL manually with: sudo systemctl stop postgresql " +
+                        "and try again. To enable automatic stopping, configure passwordless sudo: " +
+                        "echo 'your_user ALL=(ALL) NOPASSWD: /bin/systemctl stop postgresql, /bin/systemctl start postgresql' | sudo tee /etc/sudoers.d/migration-tracker");
+                return result;
+            } else {
+                if (postgresStopped) {
+                    logger.info("PostgreSQL stopped successfully");
                 } else {
                     logger.info("PostgreSQL is already stopped");
                 }
-            } else {
-                logger.info("PostgreSQL stopped successfully");
             }
 
             // Backup existing data directory if it exists and has content
@@ -883,10 +897,18 @@ public class PostgreSQLRestoreService {
      * Tries systemctl first, then pg_ctl as fallback
      */
     private boolean stopPostgreSQL() {
+        // First check if sudo works without password (non-interactive)
+        if (!canUseSudoNonInteractive()) {
+            logger.warn("sudo requires password. Cannot stop PostgreSQL automatically.");
+            logger.warn("Please configure passwordless sudo or stop PostgreSQL manually before restoring.");
+            return false;
+        }
+        
         // Try sudo systemctl first (requires root privileges)
         try {
             List<String> command = new ArrayList<>();
             command.add("sudo");
+            command.add("-n"); // Non-interactive mode - fail if password required
             command.add("systemctl");
             command.add("stop");
             command.add("postgresql");
@@ -910,11 +932,12 @@ public class PostgreSQLRestoreService {
                 logger.info("PostgreSQL stopped via sudo systemctl");
                 return true;
             } else {
+                String errorOutput = output.toString();
                 logger.warn("sudo systemctl stop postgresql failed with exit code: {}", exitCode);
-                logger.warn("Output: {}", output.toString());
+                logger.warn("Output: {}", errorOutput);
             }
         } catch (Exception e) {
-            logger.debug("sudo systemctl stop failed: {}", e.getMessage());
+            logger.error("sudo systemctl stop failed: {}", e.getMessage(), e);
         }
 
         // Try systemctl without sudo (in case running as root or has permissions)
@@ -1010,8 +1033,39 @@ public class PostgreSQLRestoreService {
             logger.debug("pg_ctl stop failed: {}", e.getMessage());
         }
 
-        logger.debug("Could not stop PostgreSQL via commands. It may already be stopped.");
+        logger.warn("Could not stop PostgreSQL via any command. It may already be stopped, or sudo requires a password.");
+        logger.warn("If PostgreSQL is running, you may need to stop it manually: sudo systemctl stop postgresql");
         return false;
+    }
+
+    /**
+     * Check if sudo can be used non-interactively (without password)
+     */
+    private boolean canUseSudoNonInteractive() {
+        try {
+            List<String> command = new ArrayList<>();
+            command.add("sudo");
+            command.add("-n"); // Non-interactive - fail if password required
+            command.add("true"); // Simple command that always succeeds
+            
+            ProcessBuilder pb = new ProcessBuilder(command);
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+            
+            // Consume output
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream()))) {
+                while (reader.readLine() != null) {
+                    // Consume output
+                }
+            }
+            
+            int exitCode = process.waitFor();
+            return exitCode == 0;
+        } catch (Exception e) {
+            logger.debug("Cannot use sudo non-interactively: {}", e.getMessage());
+            return false;
+        }
     }
 
     /**
