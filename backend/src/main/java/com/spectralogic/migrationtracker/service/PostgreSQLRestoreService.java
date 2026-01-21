@@ -883,7 +883,41 @@ public class PostgreSQLRestoreService {
      * Tries systemctl first, then pg_ctl as fallback
      */
     private boolean stopPostgreSQL() {
-        // Try systemctl first (most common on Linux)
+        // Try sudo systemctl first (requires root privileges)
+        try {
+            List<String> command = new ArrayList<>();
+            command.add("sudo");
+            command.add("systemctl");
+            command.add("stop");
+            command.add("postgresql");
+            
+            ProcessBuilder pb = new ProcessBuilder(command);
+            pb.redirectErrorStream(true);
+            
+            Process process = pb.start();
+            StringBuilder output = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append("\n");
+                    logger.debug("sudo systemctl stop: {}", line);
+                }
+            }
+            
+            int exitCode = process.waitFor();
+            if (exitCode == 0) {
+                logger.info("PostgreSQL stopped via sudo systemctl");
+                return true;
+            } else {
+                logger.warn("sudo systemctl stop postgresql failed with exit code: {}", exitCode);
+                logger.warn("Output: {}", output.toString());
+            }
+        } catch (Exception e) {
+            logger.debug("sudo systemctl stop failed: {}", e.getMessage());
+        }
+
+        // Try systemctl without sudo (in case running as root or has permissions)
         try {
             List<String> command = new ArrayList<>();
             command.add("systemctl");
@@ -913,12 +947,13 @@ public class PostgreSQLRestoreService {
             logger.debug("systemctl stop failed: {}", e.getMessage());
         }
 
-        // Try alternative service names
+        // Try alternative service names with sudo
         String[] serviceNames = {"postgresql@14-main", "postgresql@15-main", "postgresql@16-main", 
                                 "postgresql-14", "postgresql-15", "postgresql-16"};
         for (String serviceName : serviceNames) {
             try {
                 List<String> command = new ArrayList<>();
+                command.add("sudo");
                 command.add("systemctl");
                 command.add("stop");
                 command.add(serviceName);
@@ -927,20 +962,22 @@ public class PostgreSQLRestoreService {
                 pb.redirectErrorStream(true);
                 
                 Process process = pb.start();
+                StringBuilder output = new StringBuilder();
                 try (BufferedReader reader = new BufferedReader(
                         new InputStreamReader(process.getInputStream()))) {
-                    while (reader.readLine() != null) {
-                        // Consume output
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        output.append(line).append("\n");
                     }
                 }
                 
                 int exitCode = process.waitFor();
                 if (exitCode == 0) {
-                    logger.info("PostgreSQL stopped via systemctl ({})", serviceName);
+                    logger.info("PostgreSQL stopped via sudo systemctl ({})", serviceName);
                     return true;
                 }
             } catch (Exception e) {
-                logger.debug("systemctl stop {} failed: {}", serviceName, e.getMessage());
+                logger.debug("sudo systemctl stop {} failed: {}", serviceName, e.getMessage());
             }
         }
 
@@ -1096,7 +1133,47 @@ public class PostgreSQLRestoreService {
      * Tries systemctl first, then pg_ctl as fallback
      */
     private boolean startPostgreSQL() {
-        // Try systemctl first (most common on Linux)
+        // Try sudo systemctl first (requires root privileges)
+        try {
+            List<String> command = new ArrayList<>();
+            command.add("sudo");
+            command.add("systemctl");
+            command.add("start");
+            command.add("postgresql");
+            
+            ProcessBuilder pb = new ProcessBuilder(command);
+            pb.redirectErrorStream(true);
+            
+            Process process = pb.start();
+            StringBuilder output = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append("\n");
+                    logger.debug("sudo systemctl start: {}", line);
+                }
+            }
+            
+            int exitCode = process.waitFor();
+            if (exitCode == 0) {
+                // Wait a moment for PostgreSQL to start
+                try {
+                    Thread.sleep(2000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                logger.info("PostgreSQL started via sudo systemctl");
+                return true;
+            } else {
+                logger.warn("sudo systemctl start postgresql failed with exit code: {}", exitCode);
+                logger.warn("Output: {}", output.toString());
+            }
+        } catch (Exception e) {
+            logger.debug("sudo systemctl start failed: {}", e.getMessage());
+        }
+
+        // Try systemctl without sudo (in case running as root or has permissions)
         try {
             List<String> command = new ArrayList<>();
             command.add("systemctl");
@@ -1134,12 +1211,13 @@ public class PostgreSQLRestoreService {
             logger.debug("systemctl start failed: {}", e.getMessage());
         }
 
-        // Try alternative service names
+        // Try alternative service names with sudo
         String[] serviceNames = {"postgresql@14-main", "postgresql@15-main", "postgresql@16-main",
                                 "postgresql-14", "postgresql-15", "postgresql-16"};
         for (String serviceName : serviceNames) {
             try {
                 List<String> command = new ArrayList<>();
+                command.add("sudo");
                 command.add("systemctl");
                 command.add("start");
                 command.add(serviceName);
@@ -1148,10 +1226,12 @@ public class PostgreSQLRestoreService {
                 pb.redirectErrorStream(true);
                 
                 Process process = pb.start();
+                StringBuilder output = new StringBuilder();
                 try (BufferedReader reader = new BufferedReader(
                         new InputStreamReader(process.getInputStream()))) {
-                    while (reader.readLine() != null) {
-                        // Consume output
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        output.append(line).append("\n");
                     }
                 }
                 
@@ -1163,11 +1243,11 @@ public class PostgreSQLRestoreService {
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                     }
-                    logger.info("PostgreSQL started via systemctl ({})", serviceName);
+                    logger.info("PostgreSQL started via sudo systemctl ({})", serviceName);
                     return true;
                 }
             } catch (Exception e) {
-                logger.debug("systemctl start {} failed: {}", serviceName, e.getMessage());
+                logger.debug("sudo systemctl start {} failed: {}", serviceName, e.getMessage());
             }
         }
 
