@@ -726,9 +726,10 @@ public class PostgreSQLRestoreService {
 
         logger.info("Restoring PostgreSQL data directory backup for {}", databaseType);
 
+        Path pgDataDir = null;
         try {
             // Get PostgreSQL data directory path
-            Path pgDataDir = getPostgreSQLDataDirectory(databaseType, dbInfo);
+            pgDataDir = getPostgreSQLDataDirectory(databaseType, dbInfo);
             if (pgDataDir == null) {
                 result.setSuccess(false);
                 StringBuilder errorMsg = new StringBuilder();
@@ -934,8 +935,45 @@ public class PostgreSQLRestoreService {
 
         } catch (Exception e) {
             result.setSuccess(false);
-            result.setError("Failed to restore data directory backup: " + e.getMessage());
-            logger.error("Data directory restore failed", e);
+            String errorMsg = "Failed to restore data directory backup";
+            String targetPath = (pgDataDir != null) ? pgDataDir.toString() : "unknown location";
+            
+            if (e.getMessage() != null && !e.getMessage().isEmpty() && !e.getMessage().equals(targetPath)) {
+                errorMsg += ": " + e.getMessage();
+            } else {
+                errorMsg += " to " + targetPath;
+                if (e.getClass() != Exception.class) {
+                    errorMsg += " (" + e.getClass().getSimpleName() + ")";
+                }
+            }
+            
+            // Add more context for common exceptions
+            if (e instanceof IOException) {
+                IOException ioException = (IOException) e;
+                String msg = ioException.getMessage();
+                if (msg != null) {
+                    if (msg.contains("Permission denied") || msg.contains("permission denied")) {
+                        errorMsg += "\n\nPermission denied. This may require sudo. Try:\n";
+                        if (pgDataDir != null) {
+                            errorMsg += "sudo rsync -av " + extractedDataDir + "/ " + pgDataDir + "/\n";
+                            errorMsg += "sudo chown -R postgres:postgres " + pgDataDir;
+                        } else {
+                            errorMsg += "sudo rsync -av <source>/ <target>/";
+                        }
+                    } else if (msg.contains("No space left") || msg.contains("no space")) {
+                        errorMsg += "\n\nDisk space is full. Please free up space and try again.";
+                    } else if (msg.contains("File exists") || msg.contains("file exists")) {
+                        errorMsg += "\n\nTarget directory already exists and may be in use. Ensure PostgreSQL is stopped.";
+                    }
+                }
+            } else if (e instanceof SecurityException) {
+                errorMsg += "\n\nSecurity/permission error. The application may need to run with appropriate permissions.";
+            } else if (e instanceof java.nio.file.FileSystemException) {
+                errorMsg += "\n\nFile system error. Check disk space and permissions.";
+            }
+            
+            result.setError(errorMsg);
+            logger.error("Data directory restore failed for target: {}", targetPath, e);
         }
 
         return result;
