@@ -258,9 +258,16 @@ export default function Phases() {
                         </p>
                       </div>
                     </div>
-                    <span className="px-2 py-1 bg-primary-100 text-primary-700 text-xs font-medium rounded">
-                      {phase.type.replace('_', ' ')}
-                    </span>
+                    <div className="flex items-center space-x-2">
+                      <span className="px-2 py-1 bg-primary-100 text-primary-700 text-xs font-medium rounded">
+                        {phase.type.replace('_', ' ')}
+                      </span>
+                      {(phase.active === false) && (
+                        <span className="px-2 py-1 bg-red-100 text-red-800 text-xs font-medium rounded">
+                          Inactive
+                        </span>
+                      )}
+                    </div>
                   </div>
 
               {(phase.sourceTapePartition || phase.targetTapePartition) && (

@@ -49,7 +49,7 @@ public class CustomerRepository {
 
     public List<Customer> findAll() {
         return jdbcTemplate.query(
-            "SELECT * FROM customer WHERE active = 1 ORDER BY name",
+            "SELECT * FROM customer ORDER BY name",
             rowMapper
         );
     }
@@ -65,7 +65,7 @@ public class CustomerRepository {
 
     public List<Customer> searchByName(String name) {
         return jdbcTemplate.query(
-            "SELECT * FROM customer WHERE name LIKE ? AND active = 1 ORDER BY name",
+            "SELECT * FROM customer WHERE name LIKE ? ORDER BY name",
             rowMapper,
             "%" + name + "%"
         );

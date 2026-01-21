@@ -182,7 +182,7 @@ export default function Projects() {
                   className={`px-2 py-1 rounded-full text-xs ${
                     project.active
                       ? 'bg-green-100 text-green-800'
-                      : 'bg-gray-100 text-gray-800'
+                      : 'bg-red-100 text-red-800'
                   }`}
                 >
                   {project.active ? 'Active' : 'Inactive'}
@@ -202,15 +202,24 @@ export default function Projects() {
                 return (
                   <div className="mb-4 space-y-3">
                     {projectPhases.map((phase) => (
-                      <div key={phase.id} className="border border-gray-200 rounded p-2 hover:bg-gray-50 transition-colors">
+                      <div key={phase.id} className={`border rounded p-2 hover:bg-gray-50 transition-colors ${
+                        (phase.active === false) ? 'border-red-200 bg-red-50' : 'border-gray-200'
+                      }`}>
                         <div className="flex items-center justify-between mb-1">
                           <div className="flex-1 min-w-0">
                             <h4 className="text-sm font-medium text-gray-900 truncate">{phase.name}</h4>
                             <p className="text-xs text-gray-600 truncate">{phase.source} → {phase.target}</p>
                           </div>
-                          <span className="ml-2 px-2 py-0.5 bg-primary-100 text-primary-700 text-xs font-medium rounded flex-shrink-0">
-                            {phase.type.replace('_', ' ')}
-                          </span>
+                          <div className="ml-2 flex items-center space-x-1 flex-shrink-0">
+                            <span className="px-2 py-0.5 bg-primary-100 text-primary-700 text-xs font-medium rounded">
+                              {phase.type.replace('_', ' ')}
+                            </span>
+                            {(phase.active === false) && (
+                              <span className="px-2 py-0.5 bg-red-100 text-red-800 text-xs font-medium rounded">
+                                Inactive
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <div className="mt-2">
                           <ProgressBar progress={getPhaseProgress(phase.id)} size="sm" label="Progress" showPercentage={true} />

@@ -40,14 +40,14 @@ public class ProjectRepository {
 
     public List<MigrationProject> findAll() {
         return jdbcTemplate.query(
-            "SELECT * FROM migration_project WHERE active = 1 ORDER BY name",
+            "SELECT * FROM migration_project ORDER BY name",
             rowMapper
         );
     }
 
     public List<MigrationProject> findByCustomerId(String customerId) {
         return jdbcTemplate.query(
-            "SELECT * FROM migration_project WHERE customer_id = ? AND active = 1 ORDER BY name",
+            "SELECT * FROM migration_project WHERE customer_id = ? ORDER BY name",
             rowMapper,
             customerId
         );
@@ -64,7 +64,7 @@ public class ProjectRepository {
 
     public List<MigrationProject> searchByName(String name) {
         return jdbcTemplate.query(
-            "SELECT * FROM migration_project WHERE name LIKE ? AND active = 1 ORDER BY name",
+            "SELECT * FROM migration_project WHERE name LIKE ? ORDER BY name",
             rowMapper,
             "%" + name + "%"
         );
