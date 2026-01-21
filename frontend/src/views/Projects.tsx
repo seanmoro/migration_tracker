@@ -84,7 +84,12 @@ export default function Projects() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => projectsApi.delete(id),
     onSuccess: () => {
+      // Invalidate all project queries (with or without searchTerm)
       queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['all-phases'] });
+      queryClient.invalidateQueries({ queryKey: ['all-phases-progress'] });
+      // Force refetch to ensure UI updates
+      queryClient.refetchQueries({ queryKey: ['projects'] });
       toast.success('Project deleted successfully');
     },
     onError: (error: any) => {
