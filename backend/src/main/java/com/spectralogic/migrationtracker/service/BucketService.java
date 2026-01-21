@@ -277,6 +277,7 @@ public class BucketService {
             JdbcTemplate jdbc = new JdbcTemplate(dataSource);
             
             // Try customer-specific database first, fallback to generic
+            String actualDatabaseName = databaseName;
             try {
                 jdbc.query("SELECT 1", (rs, rowNum) -> rs.getInt(1));
                 logger.debug("Successfully connected to customer-specific database: {}", databaseName);
@@ -287,13 +288,16 @@ public class BucketService {
                     dataSource.setUrl(String.format("jdbc:postgresql://%s:%d/%s", host, port, genericDatabaseName));
                     jdbc = new JdbcTemplate(dataSource);
                     jdbc.query("SELECT 1", (rs, rowNum) -> rs.getInt(1));
-                    logger.info("Successfully connected to generic database: {}", genericDatabaseName);
+                    actualDatabaseName = genericDatabaseName;
+                    logger.info("Successfully connected to generic database: {}. Using this for bucket queries.", genericDatabaseName);
                 } catch (Exception e2) {
-                    logger.error("Cannot connect to either customer-specific database {} or generic database {}: {}", 
+                    logger.error("Cannot connect to either customer-specific database {} or generic database {}: {}. Please ensure the database has been restored.", 
                         databaseName, genericDatabaseName, e2.getMessage());
                     return buckets; // Return empty list
                 }
             }
+            
+            logger.info("Querying buckets from database: {}@{}:{}/{}", username, host, port, actualDatabaseName);
             
             // Query buckets - try multiple patterns
             List<Map<String, Object>> results = new ArrayList<>();
