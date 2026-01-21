@@ -1,5 +1,6 @@
 package com.spectralogic.migrationtracker.model;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.time.LocalDate;
 import java.util.UUID;
 
@@ -7,6 +8,8 @@ public class MigrationPhase {
     private String id;
     private String name;
     private String type;
+    
+    @JsonProperty("projectId")  // Accept "projectId" from frontend, map to migrationId
     private String migrationId;
     private String source;
     private String target;

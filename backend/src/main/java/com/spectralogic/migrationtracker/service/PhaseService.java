@@ -37,6 +37,11 @@ public class PhaseService {
     }
 
     public MigrationPhase create(MigrationPhase phase) {
+        // migrationId should be set via @JsonProperty("projectId") annotation
+        // But validate it's not null
+        if (phase.getMigrationId() == null || phase.getMigrationId().isEmpty()) {
+            throw new IllegalArgumentException("projectId (migrationId) is required");
+        }
         return repository.save(phase);
     }
 
