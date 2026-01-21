@@ -20,22 +20,80 @@ fi
 
 # Pull latest code
 echo "📥 Pulling latest code from GitHub..."
-git pull origin main
+OLD_HEAD=$(git rev-parse HEAD 2>/dev/null || echo "")
+git pull origin main || {
+    echo "⚠️  Warning: git pull failed or no changes to pull"
+    OLD_HEAD=""
+}
+NEW_HEAD=$(git rev-parse HEAD 2>/dev/null || echo "")
 
-# Build backend
-echo ""
-echo "🔨 Building backend..."
-cd backend
-mvn clean package -DskipTests
-cd ..
+# Check if anything changed
+if [ -z "$OLD_HEAD" ] || [ -z "$NEW_HEAD" ] || [ "$OLD_HEAD" = "$NEW_HEAD" ]; then
+    if [ -z "$OLD_HEAD" ] || [ "$OLD_HEAD" = "$NEW_HEAD" ]; then
+        echo "   No changes detected. Skipping rebuild."
+        REBUILD_BACKEND=false
+        REBUILD_FRONTEND=false
+    else
+        # First run or can't determine changes - rebuild everything to be safe
+        echo "   Cannot determine changes. Rebuilding everything to be safe."
+        REBUILD_BACKEND=true
+        REBUILD_FRONTEND=true
+    fi
+else
+    # Check what files changed
+    CHANGED_FILES=$(git diff --name-only $OLD_HEAD $NEW_HEAD 2>/dev/null || echo "")
+    
+    if [ -z "$CHANGED_FILES" ]; then
+        echo "   No file changes detected. Skipping rebuild."
+        REBUILD_BACKEND=false
+        REBUILD_FRONTEND=false
+    else
+        # Check if backend files changed
+        BACKEND_CHANGED=false
+        if echo "$CHANGED_FILES" | grep -qE "^backend/|^pom\.xml"; then
+            BACKEND_CHANGED=true
+        fi
+        
+        # Check if frontend files changed
+        FRONTEND_CHANGED=false
+        if echo "$CHANGED_FILES" | grep -qE "^frontend/"; then
+            FRONTEND_CHANGED=true
+        fi
+        
+        # Check if config files that affect both changed
+        if echo "$CHANGED_FILES" | grep -qE "^backend/src/main/resources/application\.yml|^\.env"; then
+            BACKEND_CHANGED=true  # Config changes require backend rebuild
+        fi
+        
+        REBUILD_BACKEND=$BACKEND_CHANGED
+        REBUILD_FRONTEND=$FRONTEND_CHANGED
+    fi
+fi
 
-# Build frontend
-echo ""
-echo "🔨 Building frontend..."
-cd frontend
-npm install
-npm run build
-cd ..
+# Build backend if needed
+if [ "$REBUILD_BACKEND" = true ]; then
+    echo ""
+    echo "🔨 Building backend (backend files changed)..."
+    cd backend
+    mvn clean package -DskipTests
+    cd ..
+else
+    echo ""
+    echo "⏭️  Skipping backend build (no backend changes detected)"
+fi
+
+# Build frontend if needed
+if [ "$REBUILD_FRONTEND" = true ]; then
+    echo ""
+    echo "🔨 Building frontend (frontend files changed)..."
+    cd frontend
+    npm install
+    npm run build
+    cd ..
+else
+    echo ""
+    echo "⏭️  Skipping frontend build (no frontend changes detected)"
+fi
 
 echo ""
 echo "=========================================="
