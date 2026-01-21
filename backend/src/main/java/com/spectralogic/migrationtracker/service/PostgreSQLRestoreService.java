@@ -889,10 +889,24 @@ public class PostgreSQLRestoreService {
             // Use rsync with sudo for better permission handling
             boolean copySuccess = copyDirectoryWithPermissions(sourceDataDir[0], pgDataDir);
             if (!copySuccess) {
-                // Try regular copy as fallback
+                // Try regular copy as fallback (will likely fail with AccessDeniedException for protected directories)
                 try {
                     copyDirectory(sourceDataDir[0], pgDataDir);
                     logger.info("Data directory files copied successfully (without sudo)");
+                } catch (java.nio.file.AccessDeniedException e) {
+                    result.setSuccess(false);
+                    result.setError("Permission denied: Cannot write to " + pgDataDir + 
+                                  "\n\nThe PostgreSQL data directory requires root/postgres user permissions." +
+                                  "\n\nOptions:" +
+                                  "\n1. Configure passwordless sudo for rsync:" +
+                                  "\n   echo 'your_user ALL=(ALL) NOPASSWD: /usr/bin/rsync' | sudo tee /etc/sudoers.d/migration-tracker-rsync" +
+                                  "\n\n2. Copy manually before restoring:" +
+                                  "\n   sudo rsync -av " + sourceDataDir[0] + "/ " + pgDataDir + "/" +
+                                  "\n   sudo chown -R postgres:postgres " + pgDataDir +
+                                  "\n\n3. Run the application with sudo:" +
+                                  "\n   sudo -E java -jar backend/target/migration-tracker-api-1.0.0.jar");
+                    logger.error("Failed to copy data directory - permission denied", e);
+                    return result;
                 } catch (Exception e) {
                     result.setSuccess(false);
                     result.setError("Failed to copy data directory files: " + e.getMessage() + 
@@ -1610,8 +1624,10 @@ public class PostgreSQLRestoreService {
     private boolean copyDirectoryWithPermissions(Path source, Path target) {
         try {
             // Try rsync with sudo first (best for preserving permissions)
+            // Use -n flag to fail fast if password is required
             List<String> command = new ArrayList<>();
             command.add("sudo");
+            command.add("-n"); // Non-interactive - fail if password required
             command.add("rsync");
             command.add("-av");
             command.add("--delete");
@@ -1637,10 +1653,15 @@ public class PostgreSQLRestoreService {
                 logger.info("Successfully copied data directory using rsync with sudo");
                 return true;
             } else {
-                logger.warn("rsync with sudo failed (exit code {}): {}", exitCode, output.toString());
+                String errorOutput = output.toString();
+                logger.warn("rsync with sudo failed (exit code {}): {}", exitCode, errorOutput);
+                // Check if it's a password issue
+                if (errorOutput.contains("password") || errorOutput.contains("sudo")) {
+                    logger.warn("sudo requires password. Cannot use rsync with sudo automatically.");
+                }
             }
         } catch (Exception e) {
-            logger.debug("rsync with sudo failed: {}", e.getMessage());
+            logger.warn("rsync with sudo failed: {}", e.getMessage());
         }
 
         // Try rsync without sudo (in case running as postgres user)
