@@ -65,7 +65,8 @@ export default function Phases() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => phasesApi.delete(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['phases'] });
+      queryClient.invalidateQueries({ queryKey: ['phases', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['phases-progress'] });
       toast.success('Phase deleted successfully');
     },
     onError: (error: any) => {
@@ -87,7 +88,7 @@ export default function Phases() {
       return phasesApi.create(duplicateData);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['phases'] });
+      queryClient.invalidateQueries({ queryKey: ['phases', projectId] });
       toast.success('Phase duplicated successfully');
     },
     onError: (error: any) => {
