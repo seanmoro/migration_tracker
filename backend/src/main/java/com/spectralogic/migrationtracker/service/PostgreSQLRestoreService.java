@@ -947,14 +947,8 @@ public class PostgreSQLRestoreService {
      * @param dataDir Optional data directory path for pg_ctl fallback
      */
     private boolean stopPostgreSQL(Path dataDir) {
-        // First check if sudo works without password (non-interactive)
-        if (!canUseSudoNonInteractive()) {
-            logger.warn("sudo requires password. Cannot stop PostgreSQL automatically.");
-            logger.warn("Please configure passwordless sudo or stop PostgreSQL manually before restoring.");
-            return false;
-        }
-        
         // Try sudo systemctl first (requires root privileges)
+        // Note: We try sudo even if it might require a password, but use -n flag to fail fast
         try {
             List<String> command = new ArrayList<>();
             command.add("sudo");
@@ -991,6 +985,7 @@ public class PostgreSQLRestoreService {
         }
 
         // Try systemctl without sudo (in case running as root or has permissions)
+        // This is what worked previously - systemctl might work without sudo
         try {
             List<String> command = new ArrayList<>();
             command.add("systemctl");
