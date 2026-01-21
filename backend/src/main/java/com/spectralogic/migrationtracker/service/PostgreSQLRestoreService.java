@@ -1125,36 +1125,6 @@ public class PostgreSQLRestoreService {
     }
 
     /**
-     * Check if sudo can be used non-interactively (without password)
-     */
-    private boolean canUseSudoNonInteractive() {
-        try {
-            List<String> command = new ArrayList<>();
-            command.add("sudo");
-            command.add("-n"); // Non-interactive - fail if password required
-            command.add("true"); // Simple command that always succeeds
-            
-            ProcessBuilder pb = new ProcessBuilder(command);
-            pb.redirectErrorStream(true);
-            Process process = pb.start();
-            
-            // Consume output
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(process.getInputStream()))) {
-                while (reader.readLine() != null) {
-                    // Consume output
-                }
-            }
-            
-            int exitCode = process.waitFor();
-            return exitCode == 0;
-        } catch (Exception e) {
-            logger.debug("Cannot use sudo non-interactively: {}", e.getMessage());
-            return false;
-        }
-    }
-
-    /**
      * Check if PostgreSQL is currently running
      */
     private boolean isPostgreSQLRunning() {
