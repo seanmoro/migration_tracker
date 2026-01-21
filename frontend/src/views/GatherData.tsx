@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { customersApi } from '../api/customers';
 import { projectsApi } from '../api/projects';
 import { phasesApi } from '../api/phases';
 import { migrationApi } from '../api/migration';
+import { Customer } from '../types';
 import { CheckCircle2, XCircle, Loader2, Search, CheckSquare, Square, Calendar, AlertTriangle, Info } from 'lucide-react';
 import { formatBytes, formatNumber } from '../utils/format';
 import Breadcrumb from '../components/Breadcrumb';
