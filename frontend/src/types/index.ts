@@ -20,7 +20,8 @@ export interface MigrationPhase {
   id: string;
   name: string;
   type: 'IOM_BUCKET' | 'IOM_EXCLUSION' | 'RIO_CRUISE';
-  migrationId: string;
+  migrationId?: string; // Backend may return this as "projectId" in JSON
+  projectId?: string; // Backend returns this due to @JsonProperty("projectId")
   source: string;
   target: string;
   createdAt: string;

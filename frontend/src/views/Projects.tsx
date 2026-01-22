@@ -85,10 +85,22 @@ export default function Projects() {
 
   // Get phases for a specific project
   const getProjectPhases = (projectId: string) => {
-    const phases = allPhases.filter(phase => phase.migrationId === projectId);
+    // Backend returns "projectId" in JSON due to @JsonProperty, but TypeScript interface has "migrationId"
+    // Handle both field names for compatibility
+    const phases = allPhases.filter(phase => {
+      const phaseProjectId = (phase as any).projectId || phase.migrationId;
+      return phaseProjectId === projectId;
+    });
     if (phases.length === 0 && allPhases.length > 0) {
       // Debug: check if there's a mismatch
-      console.debug(`No phases found for project ${projectId}. All phases:`, allPhases.map(p => ({ id: p.id, name: p.name, migrationId: p.migrationId })));
+      console.debug(`No phases found for project ${projectId}. Looking for projectId=${projectId}`);
+      console.debug(`Available phases:`, allPhases.map(p => ({ 
+        id: p.id, 
+        name: p.name, 
+        migrationId: p.migrationId,
+        projectId: (p as any).projectId,
+        match: ((p as any).projectId || p.migrationId) === projectId
+      })));
     }
     return phases;
   };

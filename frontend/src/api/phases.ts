@@ -6,12 +6,23 @@ export const phasesApi = {
     const response = await apiClient.get('/phases', {
       params: { projectId, includeInactive },
     });
-    return response.data;
+    // Normalize: Backend returns "projectId" in JSON, but we use "migrationId" in TypeScript
+    // Map projectId to migrationId for consistency
+    const phases = Array.isArray(response.data) ? response.data : [];
+    return phases.map((phase: any) => ({
+      ...phase,
+      migrationId: phase.projectId || phase.migrationId, // Use projectId if present, fallback to migrationId
+    }));
   },
 
   get: async (id: string): Promise<MigrationPhase> => {
     const response = await apiClient.get(`/phases/${id}`);
-    return response.data;
+    // Normalize: Backend returns "projectId" in JSON, but we use "migrationId" in TypeScript
+    const phase = response.data;
+    return {
+      ...phase,
+      migrationId: phase.projectId || phase.migrationId,
+    };
   },
 
   create: async (data: {
@@ -24,12 +35,22 @@ export const phasesApi = {
     targetTapePartition?: string;
   }): Promise<MigrationPhase> => {
     const response = await apiClient.post('/phases', data);
-    return response.data;
+    // Normalize: Backend returns "projectId" in JSON, but we use "migrationId" in TypeScript
+    const phase = response.data;
+    return {
+      ...phase,
+      migrationId: phase.projectId || phase.migrationId,
+    };
   },
 
   update: async (id: string, data: Partial<MigrationPhase>): Promise<MigrationPhase> => {
     const response = await apiClient.put(`/phases/${id}`, data);
-    return response.data;
+    // Normalize: Backend returns "projectId" in JSON, but we use "migrationId" in TypeScript
+    const phase = response.data;
+    return {
+      ...phase,
+      migrationId: phase.projectId || phase.migrationId,
+    };
   },
 
   delete: async (id: string): Promise<void> => {
@@ -40,7 +61,12 @@ export const phasesApi = {
     const response = await apiClient.get('/phases/search', {
       params: { projectId, name, includeInactive },
     });
-    return response.data;
+    // Normalize: Backend returns "projectId" in JSON, but we use "migrationId" in TypeScript
+    const phases = Array.isArray(response.data) ? response.data : [];
+    return phases.map((phase: any) => ({
+      ...phase,
+      migrationId: phase.projectId || phase.migrationId,
+    }));
   },
 
   getDefaultValues: async (projectId: string): Promise<{ source?: string; target?: string; sourceTapePartition?: string; targetTapePartition?: string }> => {
@@ -67,6 +93,11 @@ export const phasesApi = {
     const response = await apiClient.patch(`/phases/${id}/status`, null, {
       params: { active },
     });
-    return response.data;
+    // Normalize: Backend returns "projectId" in JSON, but we use "migrationId" in TypeScript
+    const phase = response.data;
+    return {
+      ...phase,
+      migrationId: phase.projectId || phase.migrationId,
+    };
   },
 };
