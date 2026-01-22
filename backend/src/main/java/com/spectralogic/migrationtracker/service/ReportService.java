@@ -139,16 +139,16 @@ public class ReportService {
             sourceObjects = ref.getSourceObjects() != null ? ref.getSourceObjects() : 0L;
             sourceSize = ref.getSourceSize() != null ? ref.getSourceSize() : 0L;
             
+            // Get baseline target (objects in target storage domain at start of migration)
+            long baselineTargetObjects = ref.getTargetObjects() != null ? ref.getTargetObjects() : 0L;
+            
+            // Get current target (objects in target storage domain now)
+            targetObjects = last.getTargetObjects() != null ? last.getTargetObjects() : 0L;
+            targetSize = last.getTargetSize() != null ? last.getTargetSize() : 0L;
+            
             if (isSameDataPoint) {
-                // Only one data point exists - use baseline target as 0 for progress calculation
-                // This assumes migration hasn't started yet, so target should be 0
-                // But we still show the actual target value from the data point for display
-                targetObjects = last.getTargetObjects() != null ? last.getTargetObjects() : 0L;
-                targetSize = last.getTargetSize() != null ? last.getTargetSize() : 0L;
-                
-                // For progress calculation, if target equals source in the first data point,
-                // it might mean the migration is complete OR the data is wrong
-                // We'll calculate progress normally but log a warning
+                // Only one data point exists - this is the baseline
+                // If target equals source, it might mean migration is complete OR data issue
                 if (targetObjects == sourceObjects && sourceObjects > 0) {
                     logger.warn("Only one data point exists for phase '{}' and target ({}) equals source ({}). " +
                         "This might indicate: 1) Migration is complete, 2) Migration hasn't started (target should be 0), " +
@@ -156,9 +156,14 @@ public class ReportService {
                         phaseId, targetObjects, sourceObjects);
                 }
             } else {
-                // Multiple data points exist - use latest for target (current state)
-                targetObjects = last.getTargetObjects() != null ? last.getTargetObjects() : 0L;
-                targetSize = last.getTargetSize() != null ? last.getTargetSize() : 0L;
+                // Multiple data points exist - calculate delta
+                long targetDelta = targetObjects - baselineTargetObjects;
+                long sourceRemaining = sourceObjects - baselineTargetObjects; // Objects that need to be migrated
+                
+                logger.info("Baseline target: {} objects, Current target: {} objects, Delta: {} objects", 
+                    baselineTargetObjects, targetObjects, targetDelta);
+                logger.info("Source: {} objects, Source remaining (after baseline): {} objects", 
+                    sourceObjects, sourceRemaining);
             }
             
             logger.info("Using baseline (reference, timestamp: {}) for source: {} objects ({} bytes)", 
@@ -188,14 +193,37 @@ public class ReportService {
         progress.setTargetSize(targetSize);
         progress.setTargetTapeCount(targetTapeCount);
         
-        // Calculate progress: (current target objects) / (baseline source objects) * 100
-        // This shows how much of the original source has been migrated to the target
-        // NOTE: This assumes target storage domain only contains migrated objects.
-        // If target already had objects before migration started, progress will be incorrect.
-        // For accurate progress, we'd need to track: (target - baseline_target) / (source - baseline_source)
-        int progressPercent = sourceObjects > 0 
-            ? (int) ((targetObjects * 100) / sourceObjects)
-            : 0;
+        // Calculate progress using delta method:
+        // Progress = (target_delta) / (source - baseline_target) * 100
+        // Where:
+        //   - target_delta = current_target - baseline_target (objects added since migration started)
+        //   - source - baseline_target = objects that need to be migrated
+        // 
+        // This accounts for pre-existing objects in the target storage domain.
+        // If baseline_target = 0, this simplifies to: target / source * 100
+        int progressPercent = 0;
+        
+        if (reference.isPresent() && latest.isPresent()) {
+            MigrationData ref = reference.get();
+            long baselineTargetObjects = ref.getTargetObjects() != null ? ref.getTargetObjects() : 0L;
+            long targetDelta = targetObjects - baselineTargetObjects;
+            long objectsToMigrate = sourceObjects - baselineTargetObjects;
+            
+            if (objectsToMigrate > 0) {
+                progressPercent = (int) ((targetDelta * 100) / objectsToMigrate);
+            } else if (sourceObjects > 0 && targetObjects >= sourceObjects) {
+                // Fallback: if objectsToMigrate <= 0, assume migration is complete
+                progressPercent = 100;
+            }
+            
+            logger.info("Progress calculation: target_delta={}, objects_to_migrate={}, progress={}%", 
+                targetDelta, objectsToMigrate, progressPercent);
+        } else {
+            // Fallback: simple calculation if no reference point
+            progressPercent = sourceObjects > 0 
+                ? (int) ((targetObjects * 100) / sourceObjects)
+                : 0;
+        }
         
         // Cap at 100% - if target exceeds source, it might mean:
         // 1. Migration is complete and target has more objects (duplicates, etc.)
