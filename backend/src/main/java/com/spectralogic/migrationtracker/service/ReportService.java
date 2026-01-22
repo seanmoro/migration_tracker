@@ -205,9 +205,29 @@ public class ReportService {
             // Query object count by storage domain
             // Try multiple query patterns to find the right schema
             // Use case-insensitive matching (ILIKE) for better compatibility
-            // Pattern 1: Storage Domain -> Storage Domain Member -> Pool/Tape -> Bucket -> Objects
-            // This is the correct relationship based on the schema:
-            // storage_domain -> storage_domain_member -> pool.pool or tape.tape -> bucket -> s3_object
+            // Pattern 1: Storage Domain -> Data Policy -> Bucket -> Objects
+            // This is the most direct relationship: storage_domain -> data_policy -> bucket -> s3_object
+            try {
+                Long count = jdbc.queryForObject(
+                    "SELECT COUNT(DISTINCT so.id) " +
+                    "FROM ds3.storage_domain sd " +
+                    "JOIN ds3.data_policy dp ON dp.storage_domain_id = sd.id " +
+                    "JOIN ds3.bucket b ON b.data_policy_id = dp.id " +
+                    "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
+                    "WHERE sd.name ILIKE ?",
+                    Long.class,
+                    storageDomainName
+                );
+                if (count != null && count > 0) {
+                    logger.info("Found {} objects for storage domain '{}' in database {} (pattern 1 - via data_policy)", count, storageDomainName, actualDatabaseName);
+                    return count;
+                }
+            } catch (Exception e) {
+                logger.warn("Query pattern 1 (via data_policy) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
+            }
+            
+            // Pattern 2: Storage Domain -> Storage Domain Member -> Pool/Tape -> Bucket -> Objects
+            // Fallback pattern: storage_domain -> storage_domain_member -> pool.pool or tape.tape -> bucket -> s3_object
             try {
                 Long count = jdbc.queryForObject(
                     "SELECT COUNT(DISTINCT so.id) " +
@@ -222,14 +242,14 @@ public class ReportService {
                     storageDomainName
                 );
                 if (count != null && count > 0) {
-                    logger.info("Found {} objects for storage domain '{}' in database {} (pattern 1 - via pool/tape)", count, storageDomainName, actualDatabaseName);
+                    logger.info("Found {} objects for storage domain '{}' in database {} (pattern 2 - via pool/tape)", count, storageDomainName, actualDatabaseName);
                     return count;
                 }
             } catch (Exception e) {
-                logger.warn("Query pattern 1 (via pool/tape) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
+                logger.warn("Query pattern 2 (via pool/tape) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
             }
             
-            // Pattern 2: Fallback - Direct bucket name matching (in case storage domain name matches bucket name)
+            // Pattern 3: Fallback - Direct bucket name matching (in case storage domain name matches bucket name)
             try {
                 Long count = jdbc.queryForObject(
                     "SELECT COUNT(DISTINCT so.id) " +
@@ -241,11 +261,11 @@ public class ReportService {
                     storageDomainName + "%"
                 );
                 if (count != null && count > 0) {
-                    logger.info("Found {} objects for storage domain '{}' in database {} (pattern 2 - bucket name)", count, storageDomainName, actualDatabaseName);
+                    logger.info("Found {} objects for storage domain '{}' in database {} (pattern 3 - bucket name)", count, storageDomainName, actualDatabaseName);
                     return count;
                 }
             } catch (Exception e) {
-                logger.warn("Query pattern 2 (bucket name) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
+                logger.warn("Query pattern 3 (bucket name) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
             }
             
             // Pattern 3: Query by storage domain name directly (if it's stored as a column in bucket)
@@ -355,8 +375,30 @@ public class ReportService {
             // Query total size by storage domain
             // Try multiple query patterns to find the right schema
             // Use case-insensitive matching (ILIKE) for better compatibility
-            // Pattern 1: Storage Domain -> Storage Domain Member -> Pool/Tape -> Bucket -> Objects
-            // This is the correct relationship based on the schema
+            // Pattern 1: Storage Domain -> Data Policy -> Bucket -> Objects
+            // This is the most direct relationship: storage_domain -> data_policy -> bucket -> s3_object
+            try {
+                Long size = jdbc.queryForObject(
+                    "SELECT COALESCE(SUM(bl.length), 0) " +
+                    "FROM ds3.storage_domain sd " +
+                    "JOIN ds3.data_policy dp ON dp.storage_domain_id = sd.id " +
+                    "JOIN ds3.bucket b ON b.data_policy_id = dp.id " +
+                    "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
+                    "LEFT JOIN ds3.blob bl ON bl.object_id = so.id " +
+                    "WHERE sd.name ILIKE ?",
+                    Long.class,
+                    storageDomainName
+                );
+                if (size != null && size > 0) {
+                    logger.info("Found {} bytes for storage domain '{}' in database {} (pattern 1 - via data_policy)", size, storageDomainName, actualDatabaseName);
+                    return size;
+                }
+            } catch (Exception e) {
+                logger.warn("Query pattern 1 (via data_policy) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
+            }
+            
+            // Pattern 2: Storage Domain -> Storage Domain Member -> Pool/Tape -> Bucket -> Objects
+            // Fallback pattern: storage_domain -> storage_domain_member -> pool.pool or tape.tape -> bucket -> s3_object
             try {
                 Long size = jdbc.queryForObject(
                     "SELECT COALESCE(SUM(bl.length), 0) " +
@@ -372,14 +414,14 @@ public class ReportService {
                     storageDomainName
                 );
                 if (size != null && size > 0) {
-                    logger.info("Found {} bytes for storage domain '{}' in database {} (pattern 1 - via pool/tape)", size, storageDomainName, actualDatabaseName);
+                    logger.info("Found {} bytes for storage domain '{}' in database {} (pattern 2 - via pool/tape)", size, storageDomainName, actualDatabaseName);
                     return size;
                 }
             } catch (Exception e) {
-                logger.warn("Query pattern 1 (via pool/tape) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
+                logger.warn("Query pattern 2 (via pool/tape) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
             }
             
-            // Pattern 2: Fallback - Direct bucket name matching
+            // Pattern 3: Fallback - Direct bucket name matching
             try {
                 Long size = jdbc.queryForObject(
                     "SELECT COALESCE(SUM(bl.length), 0) " +
@@ -392,11 +434,11 @@ public class ReportService {
                     storageDomainName + "%"
                 );
                 if (size != null && size > 0) {
-                    logger.info("Found {} bytes for storage domain '{}' in database {} (pattern 2 - bucket name)", size, storageDomainName, actualDatabaseName);
+                    logger.info("Found {} bytes for storage domain '{}' in database {} (pattern 3 - bucket name)", size, storageDomainName, actualDatabaseName);
                     return size;
                 }
             } catch (Exception e) {
-                logger.warn("Query pattern 2 (bucket name) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
+                logger.warn("Query pattern 3 (bucket name) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
             }
             
             // Pattern 3: Query by storage domain name directly (if it's stored as a column in bucket)

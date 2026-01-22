@@ -185,74 +185,107 @@ public class MigrationService {
             }
 
             // Query objects by storage domain - use correct schema relationship
-            // Storage Domain -> Storage Domain Member -> Pool/Tape -> Bucket -> Objects
+            // Try data_policy first (most direct), then fallback to pool/tape
             long totalObjects = 0L;
             long totalSize = 0L;
 
-            // Pattern 1: Storage Domain -> Storage Domain Member -> Pool/Tape -> Bucket -> Objects
-            // This is the correct relationship: storage_domain -> storage_domain_member -> pool.pool or tape.tape -> bucket -> s3_object
+            // Pattern 1: Storage Domain -> Data Policy -> Bucket -> Objects
+            // This is the most direct relationship: storage_domain -> data_policy -> bucket -> s3_object
             try {
                 Long count = jdbc.queryForObject(
                     "SELECT COUNT(DISTINCT so.id) " +
                     "FROM ds3.storage_domain sd " +
-                    "JOIN ds3.storage_domain_member sdm ON sdm.storage_domain_id = sd.id " +
-                    "LEFT JOIN pool.pool p ON p.storage_domain_member_id = sdm.id " +
-                    "LEFT JOIN tape.tape t ON t.storage_domain_member_id = sdm.id " +
-                    "LEFT JOIN ds3.bucket b ON (b.id = p.bucket_id OR b.id = t.bucket_id) " +
+                    "JOIN ds3.data_policy dp ON dp.storage_domain_id = sd.id " +
+                    "JOIN ds3.bucket b ON b.data_policy_id = dp.id " +
                     "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
-                    "WHERE sd.name ILIKE ? AND b.id IS NOT NULL",
+                    "WHERE sd.name ILIKE ?",
                     Long.class,
                     storageDomain
                 );
                 Long size = jdbc.queryForObject(
                     "SELECT COALESCE(SUM(bl.length), 0) " +
                     "FROM ds3.storage_domain sd " +
-                    "JOIN ds3.storage_domain_member sdm ON sdm.storage_domain_id = sd.id " +
-                    "LEFT JOIN pool.pool p ON p.storage_domain_member_id = sdm.id " +
-                    "LEFT JOIN tape.tape t ON t.storage_domain_member_id = sdm.id " +
-                    "LEFT JOIN ds3.bucket b ON (b.id = p.bucket_id OR b.id = t.bucket_id) " +
+                    "JOIN ds3.data_policy dp ON dp.storage_domain_id = sd.id " +
+                    "JOIN ds3.bucket b ON b.data_policy_id = dp.id " +
                     "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
                     "LEFT JOIN ds3.blob bl ON bl.object_id = so.id " +
-                    "WHERE sd.name ILIKE ? AND b.id IS NOT NULL",
+                    "WHERE sd.name ILIKE ?",
                     Long.class,
                     storageDomain
                 );
                 if (count != null && size != null) {
                     totalObjects = count;
                     totalSize = size;
-                    logger.info("Successfully queried storage domain '{}' via pool/tape: {} objects, {} bytes", storageDomain, count, size);
+                    logger.info("Successfully queried storage domain '{}' via data_policy: {} objects, {} bytes", storageDomain, count, size);
                 }
             } catch (Exception e) {
-                logger.warn("Query via pool/tape failed for storage domain '{}': {}", storageDomain, e.getMessage());
+                logger.warn("Query via data_policy failed for storage domain '{}': {}", storageDomain, e.getMessage());
                 
-                // Pattern 2: Fallback - Direct bucket name matching
+                // Pattern 2: Storage Domain -> Storage Domain Member -> Pool/Tape -> Bucket -> Objects
+                // Fallback pattern: storage_domain -> storage_domain_member -> pool.pool or tape.tape -> bucket -> s3_object
                 try {
                     Long count = jdbc.queryForObject(
                         "SELECT COUNT(DISTINCT so.id) " +
-                        "FROM ds3.bucket b " +
+                        "FROM ds3.storage_domain sd " +
+                        "JOIN ds3.storage_domain_member sdm ON sdm.storage_domain_id = sd.id " +
+                        "LEFT JOIN pool.pool p ON p.storage_domain_member_id = sdm.id " +
+                        "LEFT JOIN tape.tape t ON t.storage_domain_member_id = sdm.id " +
+                        "LEFT JOIN ds3.bucket b ON (b.id = p.bucket_id OR b.id = t.bucket_id) " +
                         "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
-                        "WHERE b.name ILIKE ? OR b.name ILIKE ?",
+                        "WHERE sd.name ILIKE ? AND b.id IS NOT NULL",
                         Long.class,
-                        storageDomain,
-                        storageDomain + "%"
+                        storageDomain
                     );
                     Long size = jdbc.queryForObject(
                         "SELECT COALESCE(SUM(bl.length), 0) " +
-                        "FROM ds3.bucket b " +
+                        "FROM ds3.storage_domain sd " +
+                        "JOIN ds3.storage_domain_member sdm ON sdm.storage_domain_id = sd.id " +
+                        "LEFT JOIN pool.pool p ON p.storage_domain_member_id = sdm.id " +
+                        "LEFT JOIN tape.tape t ON t.storage_domain_member_id = sdm.id " +
+                        "LEFT JOIN ds3.bucket b ON (b.id = p.bucket_id OR b.id = t.bucket_id) " +
                         "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
                         "LEFT JOIN ds3.blob bl ON bl.object_id = so.id " +
-                        "WHERE b.name ILIKE ? OR b.name ILIKE ?",
+                        "WHERE sd.name ILIKE ? AND b.id IS NOT NULL",
                         Long.class,
-                        storageDomain,
-                        storageDomain + "%"
+                        storageDomain
                     );
                     if (count != null && size != null) {
                         totalObjects = count;
                         totalSize = size;
-                        logger.info("Successfully queried storage domain '{}' from bucket name (fallback): {} objects, {} bytes", storageDomain, count, size);
+                        logger.info("Successfully queried storage domain '{}' via pool/tape: {} objects, {} bytes", storageDomain, count, size);
                     }
                 } catch (Exception e2) {
-                    logger.warn("Query by bucket name (fallback) failed for {}: {}", context, e2.getMessage());
+                    logger.warn("Query via pool/tape failed for storage domain '{}': {}", storageDomain, e2.getMessage());
+                    
+                    // Pattern 3: Fallback - Direct bucket name matching
+                    try {
+                        Long count = jdbc.queryForObject(
+                            "SELECT COUNT(DISTINCT so.id) " +
+                            "FROM ds3.bucket b " +
+                            "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
+                            "WHERE b.name ILIKE ? OR b.name ILIKE ?",
+                            Long.class,
+                            storageDomain,
+                            storageDomain + "%"
+                        );
+                        Long size = jdbc.queryForObject(
+                            "SELECT COALESCE(SUM(bl.length), 0) " +
+                            "FROM ds3.bucket b " +
+                            "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
+                            "LEFT JOIN ds3.blob bl ON bl.object_id = so.id " +
+                            "WHERE b.name ILIKE ? OR b.name ILIKE ?",
+                            Long.class,
+                            storageDomain,
+                            storageDomain + "%"
+                        );
+                        if (count != null && size != null) {
+                            totalObjects = count;
+                            totalSize = size;
+                            logger.info("Successfully queried storage domain '{}' from bucket name (fallback): {} objects, {} bytes", storageDomain, count, size);
+                        }
+                    } catch (Exception e3) {
+                        logger.warn("Query by bucket name (fallback) failed for {}: {}", context, e3.getMessage());
+                    }
                 }
             }
 
