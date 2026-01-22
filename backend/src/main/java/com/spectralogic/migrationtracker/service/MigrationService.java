@@ -18,9 +18,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 @Service
 public class MigrationService {
@@ -188,7 +186,6 @@ public class MigrationService {
 
             // Query objects by storage domain - try multiple patterns
             // This matches how reporting queries data
-            List<Map<String, Object>> results = new ArrayList<>();
             long totalObjects = 0L;
             long totalSize = 0L;
 
