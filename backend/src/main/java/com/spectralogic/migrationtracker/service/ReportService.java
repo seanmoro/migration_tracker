@@ -205,13 +205,14 @@ public class ReportService {
             // Query object count by storage domain
             // Try multiple query patterns to find the right schema
             // Use case-insensitive matching (ILIKE) for better compatibility
-            // Pattern 1: Storage Domain -> Data Policy -> Bucket -> Objects
-            // This is the most direct relationship: storage_domain -> data_policy -> bucket -> s3_object
+            // Pattern 1: Storage Domain -> Data Persistence Rule -> Data Policy -> Bucket -> Objects
+            // This is the correct relationship: storage_domain -> data_persistence_rule -> data_policy -> bucket -> s3_object
             try {
                 Long count = jdbc.queryForObject(
                     "SELECT COUNT(DISTINCT so.id) " +
                     "FROM ds3.storage_domain sd " +
-                    "JOIN ds3.data_policy dp ON dp.storage_domain_id = sd.id " +
+                    "JOIN ds3.data_persistence_rule dpr ON dpr.storage_domain_id = sd.id " +
+                    "JOIN ds3.data_policy dp ON dp.id = dpr.data_policy_id " +
                     "JOIN ds3.bucket b ON b.data_policy_id = dp.id " +
                     "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
                     "WHERE sd.name ILIKE ?",
@@ -219,11 +220,11 @@ public class ReportService {
                     storageDomainName
                 );
                 if (count != null && count > 0) {
-                    logger.info("Found {} objects for storage domain '{}' in database {} (pattern 1 - via data_policy)", count, storageDomainName, actualDatabaseName);
+                    logger.info("Found {} objects for storage domain '{}' in database {} (pattern 1 - via data_persistence_rule)", count, storageDomainName, actualDatabaseName);
                     return count;
                 }
             } catch (Exception e) {
-                logger.warn("Query pattern 1 (via data_policy) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
+                logger.warn("Query pattern 1 (via data_persistence_rule) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
             }
             
             // Pattern 2: Storage Domain -> Storage Domain Member -> Pool/Tape -> Bucket -> Objects
@@ -375,13 +376,14 @@ public class ReportService {
             // Query total size by storage domain
             // Try multiple query patterns to find the right schema
             // Use case-insensitive matching (ILIKE) for better compatibility
-            // Pattern 1: Storage Domain -> Data Policy -> Bucket -> Objects
-            // This is the most direct relationship: storage_domain -> data_policy -> bucket -> s3_object
+            // Pattern 1: Storage Domain -> Data Persistence Rule -> Data Policy -> Bucket -> Objects
+            // This is the correct relationship: storage_domain -> data_persistence_rule -> data_policy -> bucket -> s3_object
             try {
                 Long size = jdbc.queryForObject(
                     "SELECT COALESCE(SUM(bl.length), 0) " +
                     "FROM ds3.storage_domain sd " +
-                    "JOIN ds3.data_policy dp ON dp.storage_domain_id = sd.id " +
+                    "JOIN ds3.data_persistence_rule dpr ON dpr.storage_domain_id = sd.id " +
+                    "JOIN ds3.data_policy dp ON dp.id = dpr.data_policy_id " +
                     "JOIN ds3.bucket b ON b.data_policy_id = dp.id " +
                     "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
                     "LEFT JOIN ds3.blob bl ON bl.object_id = so.id " +
@@ -390,11 +392,11 @@ public class ReportService {
                     storageDomainName
                 );
                 if (size != null && size > 0) {
-                    logger.info("Found {} bytes for storage domain '{}' in database {} (pattern 1 - via data_policy)", size, storageDomainName, actualDatabaseName);
+                    logger.info("Found {} bytes for storage domain '{}' in database {} (pattern 1 - via data_persistence_rule)", size, storageDomainName, actualDatabaseName);
                     return size;
                 }
             } catch (Exception e) {
-                logger.warn("Query pattern 1 (via data_policy) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
+                logger.warn("Query pattern 1 (via data_persistence_rule) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
             }
             
             // Pattern 2: Storage Domain -> Storage Domain Member -> Pool/Tape -> Bucket -> Objects

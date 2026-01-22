@@ -189,13 +189,14 @@ public class MigrationService {
             long totalObjects = 0L;
             long totalSize = 0L;
 
-            // Pattern 1: Storage Domain -> Data Policy -> Bucket -> Objects
-            // This is the most direct relationship: storage_domain -> data_policy -> bucket -> s3_object
+            // Pattern 1: Storage Domain -> Data Persistence Rule -> Data Policy -> Bucket -> Objects
+            // This is the correct relationship: storage_domain -> data_persistence_rule -> data_policy -> bucket -> s3_object
             try {
                 Long count = jdbc.queryForObject(
                     "SELECT COUNT(DISTINCT so.id) " +
                     "FROM ds3.storage_domain sd " +
-                    "JOIN ds3.data_policy dp ON dp.storage_domain_id = sd.id " +
+                    "JOIN ds3.data_persistence_rule dpr ON dpr.storage_domain_id = sd.id " +
+                    "JOIN ds3.data_policy dp ON dp.id = dpr.data_policy_id " +
                     "JOIN ds3.bucket b ON b.data_policy_id = dp.id " +
                     "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
                     "WHERE sd.name ILIKE ?",
@@ -205,7 +206,8 @@ public class MigrationService {
                 Long size = jdbc.queryForObject(
                     "SELECT COALESCE(SUM(bl.length), 0) " +
                     "FROM ds3.storage_domain sd " +
-                    "JOIN ds3.data_policy dp ON dp.storage_domain_id = sd.id " +
+                    "JOIN ds3.data_persistence_rule dpr ON dpr.storage_domain_id = sd.id " +
+                    "JOIN ds3.data_policy dp ON dp.id = dpr.data_policy_id " +
                     "JOIN ds3.bucket b ON b.data_policy_id = dp.id " +
                     "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
                     "LEFT JOIN ds3.blob bl ON bl.object_id = so.id " +
@@ -216,10 +218,10 @@ public class MigrationService {
                 if (count != null && size != null) {
                     totalObjects = count;
                     totalSize = size;
-                    logger.info("Successfully queried storage domain '{}' via data_policy: {} objects, {} bytes", storageDomain, count, size);
+                    logger.info("Successfully queried storage domain '{}' via data_persistence_rule: {} objects, {} bytes", storageDomain, count, size);
                 }
             } catch (Exception e) {
-                logger.warn("Query via data_policy failed for storage domain '{}': {}", storageDomain, e.getMessage());
+                logger.warn("Query via data_persistence_rule failed for storage domain '{}': {}", storageDomain, e.getMessage());
                 
                 // Pattern 2: Storage Domain -> Storage Domain Member -> Pool/Tape -> Bucket -> Objects
                 // Fallback pattern: storage_domain -> storage_domain_member -> pool.pool or tape.tape -> bucket -> s3_object
