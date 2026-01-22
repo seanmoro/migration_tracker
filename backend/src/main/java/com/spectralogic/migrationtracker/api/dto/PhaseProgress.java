@@ -13,6 +13,8 @@ public class PhaseProgress {
     private Long averageRate;
     private Long sourceTapeCount;
     private Long targetTapeCount;
+    private String customerName;
+    private String projectName;
 
     // Getters and Setters
     public String getPhaseId() {
@@ -109,5 +111,21 @@ public class PhaseProgress {
 
     public void setTargetTapeCount(Long targetTapeCount) {
         this.targetTapeCount = targetTapeCount;
+    }
+
+    public String getCustomerName() {
+        return customerName;
+    }
+
+    public void setCustomerName(String customerName) {
+        this.customerName = customerName;
+    }
+
+    public String getProjectName() {
+        return projectName;
+    }
+
+    public void setProjectName(String projectName) {
+        this.projectName = projectName;
     }
 }

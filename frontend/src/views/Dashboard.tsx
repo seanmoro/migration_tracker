@@ -153,7 +153,12 @@ export default function Dashboard() {
                 onClick={() => navigate(`/phases/${phase.phaseId}/progress`)}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-medium text-gray-900">{phase.phaseName}</h3>
+                  <div>
+                    <h3 className="font-medium text-gray-900">{phase.phaseName}</h3>
+                    {phase.customerName && (
+                      <p className="text-xs text-gray-500 mt-1">{phase.customerName}{phase.projectName ? ` • ${phase.projectName}` : ''}</p>
+                    )}
+                  </div>
                   <div className="flex items-center space-x-2">
                     <span className="text-sm font-semibold text-red-600">{phase.progress.toFixed(2)}%</span>
                     <ArrowRight className="w-4 h-4 text-red-600" />

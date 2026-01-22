@@ -37,14 +37,9 @@ public class DashboardService {
         );
         stats.setActiveMigrations(activePhases != null ? activePhases : 0);
 
-        // Sum total objects migrated - only from active phases (with active customer and project)
+        // Sum total objects migrated - ALL objects (regardless of active/inactive status)
         Long totalObjects = jdbcTemplate.queryForObject(
-            "SELECT COALESCE(SUM(md.target_objects), 0) " +
-            "FROM migration_data md " +
-            "JOIN migration_phase mp ON md.migration_phase_id = mp.id " +
-            "JOIN migration_project pj ON mp.migration_id = pj.id " +
-            "JOIN customer c ON pj.customer_id = c.id " +
-            "WHERE md.type = 'DATA' AND c.active = 1 AND pj.active = 1 AND (mp.active IS NULL OR mp.active = 1)",
+            "SELECT COALESCE(SUM(target_objects), 0) FROM migration_data WHERE type = 'DATA'",
             Long.class
         );
         stats.setTotalObjectsMigrated(totalObjects != null ? totalObjects : 0L);
@@ -205,26 +200,34 @@ public class DashboardService {
         List<PhaseProgress> attentionList = new ArrayList<>();
         
         // Get only active phases (with active customer and project) and check their latest progress
-        // Filter by active = 1 (or active IS NULL for backward compatibility)
-        List<MigrationPhase> activePhases = jdbcTemplate.query(
-            "SELECT mp.* FROM migration_phase mp " +
+        // Include customer and project names in the query
+        List<Map<String, Object>> phaseData = jdbcTemplate.query(
+            "SELECT mp.id as phase_id, mp.name as phase_name, " +
+            "c.name as customer_name, pj.name as project_name " +
+            "FROM migration_phase mp " +
             "JOIN migration_project pj ON mp.migration_id = pj.id " +
             "JOIN customer c ON pj.customer_id = c.id " +
             "WHERE c.active = 1 AND pj.active = 1 AND (mp.active IS NULL OR mp.active = 1) " +
             "ORDER BY mp.created_at DESC",
             (rs, rowNum) -> {
-                MigrationPhase phase = new MigrationPhase();
-                phase.setId(rs.getString("id"));
-                phase.setName(rs.getString("name"));
-                return phase;
+                Map<String, Object> data = new HashMap<>();
+                data.put("phaseId", rs.getString("phase_id"));
+                data.put("phaseName", rs.getString("phase_name"));
+                data.put("customerName", rs.getString("customer_name"));
+                data.put("projectName", rs.getString("project_name"));
+                return data;
             }
         );
 
-        for (MigrationPhase phase : activePhases) {
+        for (Map<String, Object> data : phaseData) {
+            String phaseId = (String) data.get("phaseId");
             try {
-                PhaseProgress progress = reportService.getPhaseProgress(phase.getId());
+                PhaseProgress progress = reportService.getPhaseProgress(phaseId);
                 // Only include phases with progress < 50%
                 if (progress.getProgress() < 50 && progress.getSourceObjects() > 0) {
+                    // Set customer and project names
+                    progress.setCustomerName((String) data.get("customerName"));
+                    progress.setProjectName((String) data.get("projectName"));
                     attentionList.add(progress);
                 }
             } catch (Exception e) {

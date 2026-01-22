@@ -58,6 +58,8 @@ export interface PhaseProgress {
   eta?: string;
   confidence?: number;
   averageRate?: number;
+  customerName?: string;
+  projectName?: string;
 }
 
 export interface Forecast {
