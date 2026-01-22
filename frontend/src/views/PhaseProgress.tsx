@@ -247,7 +247,8 @@ export default function PhaseProgress() {
           bucketsByName.forEach((data, bucketName) => {
             const dataPoint = data.find(d => d.timestamp === timestamp);
             if (dataPoint) {
-              entry[bucketName] = parseFloat((dataPoint.sizeBytes / (1024 * 1024 * 1024)).toFixed(2)); // GB
+              entry[bucketName] = parseFloat((dataPoint.sizeBytes / (1024 * 1024 * 1024)).toFixed(2)); // GB for chart
+              entry[`${bucketName}_bytes`] = dataPoint.sizeBytes; // Keep original for tooltip
             }
           });
           return entry;
@@ -264,7 +265,19 @@ export default function PhaseProgress() {
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="date" />
                 <YAxis tickFormatter={(value) => `${value.toFixed(2)} GB`} />
-                <Tooltip formatter={(value: number) => [`${value.toFixed(2)} GB`, 'Size']} />
+                <Tooltip 
+                  formatter={(value: number, name: string, props: any) => {
+                    // Use original bytes if available for proper formatting
+                    const payload = props.payload;
+                    const bytesKey = `${name}_bytes`;
+                    if (payload && payload[bytesKey] !== undefined) {
+                      return [formatBytes(payload[bytesKey]), name];
+                    }
+                    // Fallback: convert GB back to bytes (approximate)
+                    const bytes = value * 1024 * 1024 * 1024;
+                    return [formatBytes(bytes), name];
+                  }}
+                />
                 <Legend />
                 {Array.from(bucketsByName.keys()).map((bucketName, index) => (
                   <Line

@@ -40,6 +40,19 @@ public class MigrationDataRepository {
             data.setSourceSize(rs.getLong("source_size"));
             data.setTargetObjects(rs.getLong("target_objects"));
             data.setTargetSize(rs.getLong("target_size"));
+            
+            // Handle source_tape_count and target_tape_count - may not exist in older databases
+            try {
+                data.setSourceTapeCount(rs.getLong("source_tape_count"));
+            } catch (SQLException e) {
+                data.setSourceTapeCount(0L);
+            }
+            try {
+                data.setTargetTapeCount(rs.getLong("target_tape_count"));
+            } catch (SQLException e) {
+                data.setTargetTapeCount(0L);
+            }
+            
             data.setType(rs.getString("type"));
             
             // Handle target_scratch_tapes - may be null, string, or integer in SQLite
@@ -121,10 +134,13 @@ public class MigrationDataRepository {
     }
 
     public MigrationData save(MigrationData data) {
+        // Ensure columns exist (migration)
+        ensureColumnsExist();
+        
         if (data.getId() == null || findById(data.getId()).isEmpty()) {
             // Insert
             jdbcTemplate.update(
-                "INSERT INTO migration_data (id, created_at, last_updated, timestamp, migration_phase_id, user_id, source_objects, source_size, target_objects, target_size, type, target_scratch_tapes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO migration_data (id, created_at, last_updated, timestamp, migration_phase_id, user_id, source_objects, source_size, target_objects, target_size, source_tape_count, target_tape_count, type, target_scratch_tapes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 data.getId(),
                 data.getCreatedAt(),
                 data.getLastUpdated(),
@@ -135,6 +151,8 @@ public class MigrationDataRepository {
                 data.getSourceSize(),
                 data.getTargetObjects(),
                 data.getTargetSize(),
+                data.getSourceTapeCount() != null ? data.getSourceTapeCount() : 0L,
+                data.getTargetTapeCount() != null ? data.getTargetTapeCount() : 0L,
                 data.getType(),
                 data.getTargetScratchTapes()
             );
@@ -142,12 +160,14 @@ public class MigrationDataRepository {
             // Update
             data.setLastUpdated(LocalDate.now());
             jdbcTemplate.update(
-                "UPDATE migration_data SET timestamp = ?, source_objects = ?, source_size = ?, target_objects = ?, target_size = ?, type = ?, target_scratch_tapes = ?, last_updated = ? WHERE id = ?",
+                "UPDATE migration_data SET timestamp = ?, source_objects = ?, source_size = ?, target_objects = ?, target_size = ?, source_tape_count = ?, target_tape_count = ?, type = ?, target_scratch_tapes = ?, last_updated = ? WHERE id = ?",
                 data.getTimestamp(),
                 data.getSourceObjects(),
                 data.getSourceSize(),
                 data.getTargetObjects(),
                 data.getTargetSize(),
+                data.getSourceTapeCount() != null ? data.getSourceTapeCount() : 0L,
+                data.getTargetTapeCount() != null ? data.getTargetTapeCount() : 0L,
                 data.getType(),
                 data.getTargetScratchTapes(),
                 data.getLastUpdated(),
@@ -155,6 +175,32 @@ public class MigrationDataRepository {
             );
         }
         return data;
+    }
+    
+    private void ensureColumnsExist() {
+        try {
+            // Check if source_tape_count column exists
+            jdbcTemplate.query("SELECT source_tape_count FROM migration_data LIMIT 1", (rs) -> null);
+        } catch (Exception e) {
+            // Column doesn't exist, add it
+            try {
+                jdbcTemplate.execute("ALTER TABLE migration_data ADD COLUMN source_tape_count INTEGER DEFAULT 0");
+            } catch (Exception e2) {
+                // Column might already exist, ignore
+            }
+        }
+        
+        try {
+            // Check if target_tape_count column exists
+            jdbcTemplate.query("SELECT target_tape_count FROM migration_data LIMIT 1", (rs) -> null);
+        } catch (Exception e) {
+            // Column doesn't exist, add it
+            try {
+                jdbcTemplate.execute("ALTER TABLE migration_data ADD COLUMN target_tape_count INTEGER DEFAULT 0");
+            } catch (Exception e2) {
+                // Column might already exist, ignore
+            }
+        }
     }
 
     public void deleteByPhaseIdAndTimestamp(String phaseId, LocalDate timestamp) {

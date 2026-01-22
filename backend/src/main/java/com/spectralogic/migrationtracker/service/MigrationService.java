@@ -109,6 +109,10 @@ public class MigrationService {
             totalTargetSize += bucketData.getSizeBytes();
         }
 
+        // Query tape counts for source and target storage domains
+        long sourceTapeCount = queryTapeCount(customerName, sourceDbType, phase.getSource());
+        long targetTapeCount = queryTapeCount(customerName, targetDbType, phase.getTarget());
+
         // Create aggregate migration data point
         MigrationData data = new MigrationData();
         data.setMigrationPhaseId(phaseId);
@@ -116,8 +120,10 @@ public class MigrationService {
         data.setType("DATA");
         data.setSourceObjects(totalSourceObjects);
         data.setSourceSize(totalSourceSize);
+        data.setSourceTapeCount(sourceTapeCount);
         data.setTargetObjects(totalTargetObjects);
         data.setTargetSize(totalTargetSize);
+        data.setTargetTapeCount(targetTapeCount);
 
         return repository.save(data);
     }
@@ -358,5 +364,80 @@ public class MigrationService {
         // Delete both migration_data and bucket_data for this phase and date
         repository.deleteByPhaseIdAndTimestamp(phaseId, date);
         bucketDataRepository.deleteByPhaseIdAndTimestamp(phaseId, date);
+    }
+    
+    /**
+     * Query tape count for a storage domain
+     */
+    private long queryTapeCount(String customerName, String databaseType, String storageDomain) {
+        try {
+            // Construct customer-specific database name
+            String databaseName;
+            String host;
+            int port;
+            String username;
+            String password;
+
+            if (databaseType.equalsIgnoreCase("blackpearl")) {
+                databaseName = "tapesystem_" + customerName;
+                host = blackpearlHost;
+                port = blackpearlPort;
+                username = blackpearlUsername;
+                password = blackpearlPassword != null ? blackpearlPassword : "";
+            } else {
+                databaseName = "rio_db_" + customerName;
+                host = rioHost;
+                port = rioPort;
+                username = rioUsername;
+                password = rioPassword != null ? rioPassword : "";
+            }
+
+            // Create data source for customer-specific database
+            DriverManagerDataSource dataSource = new DriverManagerDataSource();
+            dataSource.setDriverClassName("org.postgresql.Driver");
+            dataSource.setUrl(String.format("jdbc:postgresql://%s:%d/%s", host, port, databaseName));
+            dataSource.setUsername(username);
+            dataSource.setPassword(password);
+
+            JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+
+            // Try customer-specific database first, fallback to generic
+            try {
+                jdbc.query("SELECT 1", (rs, rowNum) -> rs.getInt(1));
+            } catch (Exception e) {
+                logger.warn("Cannot connect to customer-specific database {} for tape count: {}. Trying generic database.", databaseName, e.getMessage());
+                String genericDatabaseName = databaseType.equalsIgnoreCase("blackpearl") ? "tapesystem" : "rio_db";
+                dataSource.setUrl(String.format("jdbc:postgresql://%s:%d/%s", host, port, genericDatabaseName));
+                jdbc = new JdbcTemplate(dataSource);
+                try {
+                    jdbc.query("SELECT 1", (rs, rowNum) -> rs.getInt(1));
+                } catch (Exception e2) {
+                    logger.error("Cannot connect to either customer-specific or generic database for tape count: {}", e2.getMessage());
+                    return 0L;
+                }
+            }
+
+            // Query tape count: COUNT(DISTINCT t.id) for storage domain
+            try {
+                Long count = jdbc.queryForObject(
+                    "SELECT COUNT(DISTINCT t.id) " +
+                    "FROM ds3.storage_domain sd " +
+                    "JOIN ds3.storage_domain_member sdm ON sdm.storage_domain_id = sd.id " +
+                    "JOIN tape.tape t ON t.storage_domain_member_id = sdm.id " +
+                    "WHERE sd.name ILIKE ?",
+                    Long.class,
+                    storageDomain
+                );
+                if (count != null) {
+                    logger.info("Found {} tapes for storage domain '{}'", count, storageDomain);
+                    return count;
+                }
+            } catch (Exception e) {
+                logger.warn("Failed to query tape count for storage domain '{}': {}", storageDomain, e.getMessage());
+            }
+        } catch (Exception e) {
+            logger.error("Error querying tape count for storage domain '{}': {}", storageDomain, e.getMessage());
+        }
+        return 0L;
     }
 }

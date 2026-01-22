@@ -14,6 +14,8 @@ public class MigrationData {
     private Long sourceSize;
     private Long targetObjects;
     private Long targetSize;
+    private Long sourceTapeCount;
+    private Long targetTapeCount;
     private String type;
     private Integer targetScratchTapes;
 
@@ -103,6 +105,22 @@ public class MigrationData {
 
     public void setTargetSize(Long targetSize) {
         this.targetSize = targetSize;
+    }
+
+    public Long getSourceTapeCount() {
+        return sourceTapeCount;
+    }
+
+    public void setSourceTapeCount(Long sourceTapeCount) {
+        this.sourceTapeCount = sourceTapeCount;
+    }
+
+    public Long getTargetTapeCount() {
+        return targetTapeCount;
+    }
+
+    public void setTargetTapeCount(Long targetTapeCount) {
+        this.targetTapeCount = targetTapeCount;
     }
 
     public String getType() {

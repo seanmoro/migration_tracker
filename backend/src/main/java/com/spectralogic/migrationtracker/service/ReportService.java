@@ -330,18 +330,23 @@ public class ReportService {
             }
         }
         
-        // Calculate tape counts from bucket_data if available
-        // Note: Tape counts aren't stored in migration_data, so we'd need to query PostgreSQL for this
-        // For now, we'll leave them as 0 since they're not critical for progress calculation
+        // Get tape counts from latest migration_data
+        long sourceTapeCount = 0L;
+        long targetTapeCount = 0L;
+        if (latest.isPresent()) {
+            MigrationData last = latest.get();
+            sourceTapeCount = last.getSourceTapeCount() != null ? last.getSourceTapeCount() : 0L;
+            targetTapeCount = last.getTargetTapeCount() != null ? last.getTargetTapeCount() : 0L;
+        }
         
         // Use baseline source for display (what we're migrating from)
         // Use current target for display (what we've migrated to)
         progress.setSourceObjects(baselineSourceObjects > 0 ? baselineSourceObjects : sourceObjects);
         progress.setSourceSize(baselineSourceSize > 0 ? baselineSourceSize : sourceSize);
-        progress.setSourceTapeCount(0L); // Tape counts not stored in bucket_data
+        progress.setSourceTapeCount(sourceTapeCount);
         progress.setTargetObjects(targetObjects);
         progress.setTargetSize(targetSize);
-        progress.setTargetTapeCount(0L); // Tape counts not stored in bucket_data
+        progress.setTargetTapeCount(targetTapeCount);
         
         // Calculate progress using delta method:
         // Progress = (target_delta) / (objects_to_migrate) * 100
