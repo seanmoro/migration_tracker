@@ -104,6 +104,45 @@ public class ReportService {
         this.postgresConfig = postgresConfig;
         this.bucketDataRepository = bucketDataRepository;
     }
+    
+    /**
+     * Check if a database exists, using cache to avoid repeated connection attempts
+     */
+    private boolean databaseExists(String databaseName, String host, int port, String username, String password) {
+        String cacheKey = String.format("%s:%d/%s", host, port, databaseName);
+        
+        // Check cache
+        Long cacheTime = databaseCacheTimestamps.get(cacheKey);
+        if (cacheTime != null && System.currentTimeMillis() - cacheTime < DATABASE_CACHE_TTL_MS) {
+            Boolean exists = databaseExistsCache.get(cacheKey);
+            if (exists != null) {
+                return exists;
+            }
+        }
+        
+        // Test connection
+        boolean exists = false;
+        try {
+            DriverManagerDataSource dataSource = new DriverManagerDataSource();
+            dataSource.setDriverClassName("org.postgresql.Driver");
+            dataSource.setUrl(String.format("jdbc:postgresql://%s:%d/%s", host, port, databaseName));
+            dataSource.setUsername(username);
+            dataSource.setPassword(password);
+            
+            JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+            jdbc.query("SELECT 1", (rs, rowNum) -> rs.getInt(1));
+            exists = true;
+        } catch (Exception e) {
+            // Database doesn't exist or connection failed
+            exists = false;
+        }
+        
+        // Update cache
+        databaseExistsCache.put(cacheKey, exists);
+        databaseCacheTimestamps.put(cacheKey, System.currentTimeMillis());
+        
+        return exists;
+    }
 
     public PhaseProgress getPhaseProgress(String phaseId) {
         MigrationPhase phase = phaseRepository.findById(phaseId)
