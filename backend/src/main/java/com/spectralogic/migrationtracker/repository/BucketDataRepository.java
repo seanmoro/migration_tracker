@@ -42,6 +42,7 @@ public class BucketDataRepository {
                     "  migration_phase_id TEXT NOT NULL," +
                     "  bucket_name TEXT NOT NULL," +
                     "  source TEXT NOT NULL," +
+                    "  storage_domain TEXT," +
                     "  object_count INTEGER," +
                     "  size_bytes INTEGER," +
                     "  user_id TEXT," +
@@ -49,6 +50,15 @@ public class BucketDataRepository {
                     ")";
                 jdbcTemplate.execute(createTableSql);
                 logger.info("bucket_data table created successfully");
+            } else {
+                // Check if storage_domain column exists, add it if not (migration)
+                try {
+                    jdbcTemplate.query("SELECT storage_domain FROM bucket_data LIMIT 1", (rs, rowNum) -> rs.getString("storage_domain"));
+                } catch (Exception e) {
+                    logger.info("Adding storage_domain column to bucket_data table");
+                    jdbcTemplate.execute("ALTER TABLE bucket_data ADD COLUMN storage_domain TEXT");
+                    logger.info("storage_domain column added successfully");
+                }
             }
         } catch (Exception e) {
             logger.error("Error ensuring bucket_data table exists: {}", e.getMessage(), e);
@@ -131,7 +141,7 @@ public class BucketDataRepository {
         if (data.getId() == null || findById(data.getId()).isEmpty()) {
             // Insert
             jdbcTemplate.update(
-                "INSERT INTO bucket_data (id, created_at, last_updated, timestamp, migration_phase_id, bucket_name, source, object_count, size_bytes, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO bucket_data (id, created_at, last_updated, timestamp, migration_phase_id, bucket_name, source, storage_domain, object_count, size_bytes, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 data.getId(),
                 data.getCreatedAt().toString(),
                 data.getLastUpdated().toString(),
@@ -139,6 +149,7 @@ public class BucketDataRepository {
                 data.getMigrationPhaseId(),
                 data.getBucketName(),
                 data.getSource(),
+                data.getStorageDomain(),
                 data.getObjectCount(),
                 data.getSizeBytes(),
                 data.getUserId()

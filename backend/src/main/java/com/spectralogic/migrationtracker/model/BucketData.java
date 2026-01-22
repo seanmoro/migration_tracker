@@ -11,6 +11,7 @@ public class BucketData {
     private String migrationPhaseId;
     private String bucketName;
     private String source; // "blackpearl" or "rio"
+    private String storageDomain; // Storage domain name (e.g., "Tape First Copy" or "Tape First Copy-LTO-10")
     private Long objectCount;
     private Long sizeBytes;
     private String userId;
@@ -76,6 +77,14 @@ public class BucketData {
 
     public void setSource(String source) {
         this.source = source;
+    }
+
+    public String getStorageDomain() {
+        return storageDomain;
+    }
+
+    public void setStorageDomain(String storageDomain) {
+        this.storageDomain = storageDomain;
     }
 
     public Long getObjectCount() {

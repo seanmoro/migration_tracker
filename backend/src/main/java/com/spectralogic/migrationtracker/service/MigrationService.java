@@ -301,6 +301,7 @@ public class MigrationService {
                             bucketData.setTimestamp(date);
                             bucketData.setBucketName(bucketName); // Store actual bucket name
                             bucketData.setSource(databaseType.toLowerCase());
+                            bucketData.setStorageDomain(storageDomain); // Store which storage domain this bucket belongs to
                             bucketData.setObjectCount(bucketCount);
                             bucketData.setSizeBytes(bucketSize);
                             bucketDataList.add(bucketDataRepository.save(bucketData));
@@ -319,6 +320,7 @@ public class MigrationService {
                     bucketData.setTimestamp(date);
                     bucketData.setBucketName(storageDomain); // Use storage domain name as bucket name
                     bucketData.setSource(databaseType.toLowerCase());
+                    bucketData.setStorageDomain(storageDomain); // Store which storage domain this bucket belongs to
                     bucketData.setObjectCount(totalObjects);
                     bucketData.setSizeBytes(totalSize);
                     bucketDataList.add(bucketDataRepository.save(bucketData));

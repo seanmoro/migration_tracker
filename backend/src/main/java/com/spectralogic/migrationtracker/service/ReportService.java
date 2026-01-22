@@ -102,128 +102,229 @@ public class ReportService {
         logger.info("Phase '{}' has {} buckets to filter (from {} BucketData records): {}", 
             phaseId, bucketsToQuery != null ? bucketsToQuery.size() : 0, allBucketData.size(), bucketsToQuery);
         
-        // Read from SQLite (migration_data table) - data gathered during "gather data" operation
-        // PostgreSQL is only queried during gatherData(), not during progress reports
+        // Read from SQLite - use bucket_data table to filter by selected buckets
+        // This ensures we only count objects from the buckets that were selected during data gathering
         
-        // Get reference point (baseline) - either REFERENCE type or first DATA point
-        Optional<MigrationData> reference = dataRepository.findReferenceByPhaseId(phaseId);
+        // Determine source and target database types
+        String sourceDbType = determineDatabaseType(phase.getSource());
+        String targetDbType = determineDatabaseType(phase.getTarget());
+        
+        // Get latest bucket_data records for each bucket (group by bucket_name, max timestamp)
+        // Filter by selected buckets if available
+        // Note: allBucketData was already retrieved above for bucket filtering
+        
+        // Get latest timestamp for this phase
         Optional<MigrationData> latest = dataRepository.findLatestByPhaseId(phaseId);
-        List<MigrationData> allData = dataRepository.findByPhaseId(phaseId);
+        LocalDate latestTimestamp = latest.isPresent() ? latest.get().getTimestamp() : null;
         
-        // If no reference point, use first data point as baseline
+        // Get reference/baseline timestamp
+        Optional<MigrationData> reference = dataRepository.findReferenceByPhaseId(phaseId);
+        List<MigrationData> allData = dataRepository.findByPhaseId(phaseId);
         if (reference.isEmpty() && !allData.isEmpty()) {
-            // Data is ordered DESC by timestamp, so last item is oldest (first data point)
-            // Use first data point (oldest) as baseline
             MigrationData firstData = allData.get(allData.size() - 1);
             reference = Optional.of(firstData);
             logger.info("No REFERENCE point found for phase '{}', using first DATA point (timestamp: {}) as baseline", 
                 phaseId, firstData.getTimestamp());
         }
+        LocalDate baselineTimestamp = reference.isPresent() ? reference.get().getTimestamp() : null;
         
+        // Filter bucket_data by selected buckets (exclude storage domain names)
+        // Sum source buckets (where source matches sourceDbType)
+        // Sum target buckets (where source matches targetDbType)
         long sourceObjects = 0L;
         long sourceSize = 0L;
         long targetObjects = 0L;
         long targetSize = 0L;
-        long sourceTapeCount = 0L;
-        long targetTapeCount = 0L;
+        long baselineSourceObjects = 0L;
+        long baselineSourceSize = 0L;
+        long baselineTargetObjects = 0L;
+        long baselineTargetSize = 0L;
         
-        // Use reference point for source (baseline), latest for target (current state)
-        if (reference.isPresent() && latest.isPresent()) {
-            MigrationData ref = reference.get();
-            MigrationData last = latest.get();
-            
-            // Check if reference and latest are the same data point (only one data point exists)
-            boolean isSameDataPoint = ref.getId().equals(last.getId());
-            
-            // Source should be from baseline (reference point)
-            sourceObjects = ref.getSourceObjects() != null ? ref.getSourceObjects() : 0L;
-            sourceSize = ref.getSourceSize() != null ? ref.getSourceSize() : 0L;
-            
-            // Get baseline target (objects in target storage domain at start of migration)
-            long baselineTargetObjects = ref.getTargetObjects() != null ? ref.getTargetObjects() : 0L;
-            
-            // Get current target (objects in target storage domain now)
-            targetObjects = last.getTargetObjects() != null ? last.getTargetObjects() : 0L;
-            targetSize = last.getTargetSize() != null ? last.getTargetSize() : 0L;
-            
-            if (isSameDataPoint) {
-                // Only one data point exists - this is the baseline
-                // If target equals source, it might mean migration is complete OR data issue
-                if (targetObjects == sourceObjects && sourceObjects > 0) {
-                    logger.warn("Only one data point exists for phase '{}' and target ({}) equals source ({}). " +
-                        "This might indicate: 1) Migration is complete, 2) Migration hasn't started (target should be 0), " +
-                        "or 3) Data gathering issue. Progress will show 100% but may be incorrect.", 
-                        phaseId, targetObjects, sourceObjects);
+        if (latestTimestamp != null) {
+            // Get latest bucket data (for current state)
+            Map<String, com.spectralogic.migrationtracker.model.BucketData> latestBucketData = new java.util.HashMap<>();
+            for (com.spectralogic.migrationtracker.model.BucketData bd : allBucketData) {
+                if (bd.getTimestamp().equals(latestTimestamp)) {
+                    String key = bd.getBucketName() + "|" + bd.getSource();
+                    // Keep only the latest record for each bucket+source combination
+                    if (!latestBucketData.containsKey(key) || 
+                        bd.getLastUpdated().isAfter(latestBucketData.get(key).getLastUpdated())) {
+                        latestBucketData.put(key, bd);
+                    }
                 }
-            } else {
-                // Multiple data points exist - calculate delta
-                long targetDelta = targetObjects - baselineTargetObjects;
-                long sourceRemaining = sourceObjects - baselineTargetObjects; // Objects that need to be migrated
-                
-                logger.info("Baseline target: {} objects, Current target: {} objects, Delta: {} objects", 
-                    baselineTargetObjects, targetObjects, targetDelta);
-                logger.info("Source: {} objects, Source remaining (after baseline): {} objects", 
-                    sourceObjects, sourceRemaining);
             }
             
-            logger.info("Using baseline (reference, timestamp: {}) for source: {} objects ({} bytes)", 
-                ref.getTimestamp(), sourceObjects, sourceSize);
-            logger.info("Using latest data point (timestamp: {}) for target: {} objects ({} bytes)", 
-                last.getTimestamp(), targetObjects, targetSize);
-        } else if (latest.isPresent()) {
-            // Fallback: if no reference, use latest for both (not ideal but better than 0)
+            // Sum source buckets (filter by selected buckets and storage domain)
+            for (com.spectralogic.migrationtracker.model.BucketData bd : latestBucketData.values()) {
+                // Check if this bucket is in the selected buckets list
+                boolean isSelectedBucket = bucketsToQuery == null || bucketsToQuery.contains(bd.getBucketName());
+                
+                // Check if this is a source bucket (matches source storage domain)
+                // If storage_domain is null (old data), fall back to database type matching
+                boolean isSourceBucket = false;
+                if (bd.getStorageDomain() != null) {
+                    isSourceBucket = bd.getStorageDomain().equals(phase.getSource()) && 
+                        !bd.getBucketName().equals(phase.getSource()) && 
+                        !bd.getBucketName().equals(phase.getTarget());
+                } else {
+                    // Fallback for old data: match by database type
+                    isSourceBucket = bd.getSource().equalsIgnoreCase(sourceDbType) && 
+                        !bd.getBucketName().equals(phase.getSource()) && 
+                        !bd.getBucketName().equals(phase.getTarget());
+                }
+                
+                if (isSelectedBucket && isSourceBucket) {
+                    sourceObjects += bd.getObjectCount() != null ? bd.getObjectCount() : 0L;
+                    sourceSize += bd.getSizeBytes() != null ? bd.getSizeBytes() : 0L;
+                }
+                
+                // Check if this is a target bucket (matches target storage domain)
+                boolean isTargetBucket = false;
+                if (bd.getStorageDomain() != null) {
+                    isTargetBucket = bd.getStorageDomain().equals(phase.getTarget()) && 
+                        !bd.getBucketName().equals(phase.getSource()) && 
+                        !bd.getBucketName().equals(phase.getTarget());
+                } else {
+                    // Fallback for old data: match by database type
+                    isTargetBucket = bd.getSource().equalsIgnoreCase(targetDbType) && 
+                        !bd.getBucketName().equals(phase.getSource()) && 
+                        !bd.getBucketName().equals(phase.getTarget());
+                }
+                
+                if (isSelectedBucket && isTargetBucket) {
+                    targetObjects += bd.getObjectCount() != null ? bd.getObjectCount() : 0L;
+                    targetSize += bd.getSizeBytes() != null ? bd.getSizeBytes() : 0L;
+                }
+            }
+            
+            logger.info("Latest bucket data (timestamp: {}): source={} objects ({} bytes), target={} objects ({} bytes)", 
+                latestTimestamp, sourceObjects, sourceSize, targetObjects, targetSize);
+        }
+        
+        if (baselineTimestamp != null && !baselineTimestamp.equals(latestTimestamp)) {
+            // Get baseline bucket data
+            Map<String, com.spectralogic.migrationtracker.model.BucketData> baselineBucketData = new java.util.HashMap<>();
+            for (com.spectralogic.migrationtracker.model.BucketData bd : allBucketData) {
+                if (bd.getTimestamp().equals(baselineTimestamp)) {
+                    String key = bd.getBucketName() + "|" + bd.getSource();
+                    if (!baselineBucketData.containsKey(key) || 
+                        bd.getLastUpdated().isAfter(baselineBucketData.get(key).getLastUpdated())) {
+                        baselineBucketData.put(key, bd);
+                    }
+                }
+            }
+            
+            // Sum baseline source and target buckets
+            for (com.spectralogic.migrationtracker.model.BucketData bd : baselineBucketData.values()) {
+                boolean isSelectedBucket = bucketsToQuery == null || bucketsToQuery.contains(bd.getBucketName());
+                
+                // Check if this is a source bucket (matches source storage domain)
+                boolean isSourceBucket = false;
+                if (bd.getStorageDomain() != null) {
+                    isSourceBucket = bd.getStorageDomain().equals(phase.getSource()) && 
+                        !bd.getBucketName().equals(phase.getSource()) && 
+                        !bd.getBucketName().equals(phase.getTarget());
+                } else {
+                    // Fallback for old data: match by database type
+                    isSourceBucket = bd.getSource().equalsIgnoreCase(sourceDbType) && 
+                        !bd.getBucketName().equals(phase.getSource()) && 
+                        !bd.getBucketName().equals(phase.getTarget());
+                }
+                
+                // Check if this is a target bucket (matches target storage domain)
+                boolean isTargetBucket = false;
+                if (bd.getStorageDomain() != null) {
+                    isTargetBucket = bd.getStorageDomain().equals(phase.getTarget()) && 
+                        !bd.getBucketName().equals(phase.getSource()) && 
+                        !bd.getBucketName().equals(phase.getTarget());
+                } else {
+                    // Fallback for old data: match by database type
+                    isTargetBucket = bd.getSource().equalsIgnoreCase(targetDbType) && 
+                        !bd.getBucketName().equals(phase.getSource()) && 
+                        !bd.getBucketName().equals(phase.getTarget());
+                }
+                
+                if (isSelectedBucket && isSourceBucket) {
+                    baselineSourceObjects += bd.getObjectCount() != null ? bd.getObjectCount() : 0L;
+                    baselineSourceSize += bd.getSizeBytes() != null ? bd.getSizeBytes() : 0L;
+                }
+                if (isSelectedBucket && isTargetBucket) {
+                    baselineTargetObjects += bd.getObjectCount() != null ? bd.getObjectCount() : 0L;
+                    baselineTargetSize += bd.getSizeBytes() != null ? bd.getSizeBytes() : 0L;
+                }
+            }
+            
+            logger.info("Baseline bucket data (timestamp: {}): source={} objects ({} bytes), target={} objects ({} bytes)", 
+                baselineTimestamp, baselineSourceObjects, baselineSourceSize, baselineTargetObjects, baselineTargetSize);
+        } else if (baselineTimestamp != null) {
+            // Same timestamp - use current values as baseline
+            baselineSourceObjects = sourceObjects;
+            baselineSourceSize = sourceSize;
+            baselineTargetObjects = targetObjects;
+            baselineTargetSize = targetSize;
+            logger.info("Baseline and latest are same timestamp, using current values as baseline");
+        }
+        
+        // Fallback: if no bucket_data, use migration_data (backward compatibility)
+        if (sourceObjects == 0 && targetObjects == 0 && latest.isPresent()) {
+            logger.warn("No bucket_data found for phase '{}', falling back to migration_data aggregate", phaseId);
             MigrationData last = latest.get();
             sourceObjects = last.getSourceObjects() != null ? last.getSourceObjects() : 0L;
             sourceSize = last.getSourceSize() != null ? last.getSourceSize() : 0L;
             targetObjects = last.getTargetObjects() != null ? last.getTargetObjects() : 0L;
             targetSize = last.getTargetSize() != null ? last.getTargetSize() : 0L;
-            logger.warn("No reference point found for phase '{}', using latest data point for both source and target", phaseId);
-        } else {
-            logger.warn("No migration_data found in SQLite for phase '{}'. Progress will show 0. Run 'gather data' to collect metrics.", phaseId);
+            
+            if (reference.isPresent()) {
+                MigrationData ref = reference.get();
+                baselineSourceObjects = ref.getSourceObjects() != null ? ref.getSourceObjects() : 0L;
+                baselineSourceSize = ref.getSourceSize() != null ? ref.getSourceSize() : 0L;
+                baselineTargetObjects = ref.getTargetObjects() != null ? ref.getTargetObjects() : 0L;
+                baselineTargetSize = ref.getTargetSize() != null ? ref.getTargetSize() : 0L;
+            }
         }
         
         // Calculate tape counts from bucket_data if available
         // Note: Tape counts aren't stored in migration_data, so we'd need to query PostgreSQL for this
         // For now, we'll leave them as 0 since they're not critical for progress calculation
         
-        progress.setSourceObjects(sourceObjects);
-        progress.setSourceSize(sourceSize);
-        progress.setSourceTapeCount(sourceTapeCount);
+        // Use baseline source for display (what we're migrating from)
+        // Use current target for display (what we've migrated to)
+        progress.setSourceObjects(baselineSourceObjects > 0 ? baselineSourceObjects : sourceObjects);
+        progress.setSourceSize(baselineSourceSize > 0 ? baselineSourceSize : sourceSize);
+        progress.setSourceTapeCount(0L); // Tape counts not stored in bucket_data
         progress.setTargetObjects(targetObjects);
         progress.setTargetSize(targetSize);
-        progress.setTargetTapeCount(targetTapeCount);
+        progress.setTargetTapeCount(0L); // Tape counts not stored in bucket_data
         
         // Calculate progress using delta method:
-        // Progress = (target_delta) / (source - baseline_target) * 100
+        // Progress = (target_delta) / (objects_to_migrate) * 100
         // Where:
         //   - target_delta = current_target - baseline_target (objects added since migration started)
-        //   - source - baseline_target = objects that need to be migrated
+        //   - objects_to_migrate = baseline_source - baseline_target (objects that need to be migrated)
         // 
         // This accounts for pre-existing objects in the target storage domain.
         // If baseline_target = 0, this simplifies to: target / source * 100
         int progressPercent = 0;
         
-        if (reference.isPresent() && latest.isPresent()) {
-            MigrationData ref = reference.get();
-            long baselineTargetObjects = ref.getTargetObjects() != null ? ref.getTargetObjects() : 0L;
-            long targetDelta = targetObjects - baselineTargetObjects;
-            long objectsToMigrate = sourceObjects - baselineTargetObjects;
-            
-            if (objectsToMigrate > 0) {
-                progressPercent = (int) ((targetDelta * 100) / objectsToMigrate);
-            } else if (sourceObjects > 0 && targetObjects >= sourceObjects) {
-                // Fallback: if objectsToMigrate <= 0, assume migration is complete
-                progressPercent = 100;
-            }
-            
-            logger.info("Progress calculation: target_delta={}, objects_to_migrate={}, progress={}%", 
-                targetDelta, objectsToMigrate, progressPercent);
-        } else {
-            // Fallback: simple calculation if no reference point
+        long targetDelta = targetObjects - baselineTargetObjects;
+        long objectsToMigrate = baselineSourceObjects - baselineTargetObjects;
+        
+        if (objectsToMigrate > 0) {
+            progressPercent = (int) ((targetDelta * 100) / objectsToMigrate);
+        } else if (baselineSourceObjects > 0 && targetObjects >= baselineSourceObjects) {
+            // Fallback: if objectsToMigrate <= 0, assume migration is complete
+            progressPercent = 100;
+        } else if (baselineSourceObjects == 0 && sourceObjects > 0) {
+            // No baseline, use current source
             progressPercent = sourceObjects > 0 
                 ? (int) ((targetObjects * 100) / sourceObjects)
                 : 0;
         }
+        
+        logger.info("Progress calculation: baseline_source={}, baseline_target={}, current_source={}, current_target={}", 
+            baselineSourceObjects, baselineTargetObjects, sourceObjects, targetObjects);
+        logger.info("Progress calculation: target_delta={}, objects_to_migrate={}, progress={}%", 
+            targetDelta, objectsToMigrate, progressPercent);
         
         // Cap at 100% - if target exceeds source, it might mean:
         // 1. Migration is complete and target has more objects (duplicates, etc.)
