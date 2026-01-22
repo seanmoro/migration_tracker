@@ -92,7 +92,7 @@ public class MigrationService {
         // Query source buckets and store per-bucket data
         long totalSourceObjects = 0L;
         long totalSourceSize = 0L;
-        List<BucketData> sourceBucketData = queryAndStoreBucketData(
+        List<BucketData> sourceBucketData = queryAndStoreStorageDomainData(
             phaseId, date, customerName, sourceDbType, phase.getSource(), selectedBuckets, "source");
         for (BucketData bucketData : sourceBucketData) {
             totalSourceObjects += bucketData.getObjectCount();
@@ -102,7 +102,7 @@ public class MigrationService {
         // Query target buckets and store per-bucket data
         long totalTargetObjects = 0L;
         long totalTargetSize = 0L;
-        List<BucketData> targetBucketData = queryAndStoreBucketData(
+        List<BucketData> targetBucketData = queryAndStoreStorageDomainData(
             phaseId, date, customerName, targetDbType, phase.getTarget(), selectedBuckets, "target");
         for (BucketData bucketData : targetBucketData) {
             totalTargetObjects += bucketData.getObjectCount();
@@ -130,7 +130,7 @@ public class MigrationService {
         return "blackpearl";
     }
 
-    private List<BucketData> queryAndStoreBucketData(
+    private List<BucketData> queryAndStoreStorageDomainData(
             String phaseId, LocalDate date, String customerName, String databaseType,
             String storageDomain, List<String> selectedBuckets, String context) {
         List<BucketData> bucketDataList = new ArrayList<>();
