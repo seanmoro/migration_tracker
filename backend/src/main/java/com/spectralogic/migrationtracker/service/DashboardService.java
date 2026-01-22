@@ -34,17 +34,22 @@ public class DashboardService {
         );
         stats.setActiveMigrations(activePhases != null ? activePhases : 0);
 
-        // Sum total objects migrated
+        // Sum total objects migrated - only from active phases
         Long totalObjects = jdbcTemplate.queryForObject(
-            "SELECT COALESCE(SUM(target_objects), 0) FROM migration_data WHERE type = 'DATA'",
+            "SELECT COALESCE(SUM(md.target_objects), 0) " +
+            "FROM migration_data md " +
+            "JOIN migration_phase mp ON md.migration_phase_id = mp.id " +
+            "WHERE md.type = 'DATA' AND (mp.active IS NULL OR mp.active = 1)",
             Long.class
         );
         stats.setTotalObjectsMigrated(totalObjects != null ? totalObjects : 0L);
 
-        // Calculate average progress
-        // This is a simplified calculation
+        // Calculate average progress - only from active phases
         Integer avgProgress = jdbcTemplate.queryForObject(
-            "SELECT AVG(CASE WHEN source_objects > 0 THEN (target_objects * 100 / source_objects) ELSE 0 END) FROM migration_data WHERE type = 'DATA'",
+            "SELECT AVG(CASE WHEN md.source_objects > 0 THEN (md.target_objects * 100 / md.source_objects) ELSE 0 END) " +
+            "FROM migration_data md " +
+            "JOIN migration_phase mp ON md.migration_phase_id = mp.id " +
+            "WHERE md.type = 'DATA' AND (mp.active IS NULL OR mp.active = 1)",
             Integer.class
         );
         stats.setAverageProgress(avgProgress != null ? avgProgress : 0);
@@ -219,10 +224,12 @@ public class DashboardService {
     }
 
     public List<Object> getRecentActivity() {
-        // Return recent migration data points
+        // Return recent migration data points - only from active phases
         return jdbcTemplate.query(
-            "SELECT md.*, mp.name as phase_name FROM migration_data md " +
+            "SELECT md.*, mp.name as phase_name " +
+            "FROM migration_data md " +
             "JOIN migration_phase mp ON md.migration_phase_id = mp.id " +
+            "WHERE (mp.active IS NULL OR mp.active = 1) " +
             "ORDER BY md.timestamp DESC LIMIT 10",
             (rs, rowNum) -> {
                 java.util.Map<String, Object> activity = new java.util.HashMap<>();
