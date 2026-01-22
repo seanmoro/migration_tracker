@@ -264,7 +264,11 @@ export default function PhaseProgress() {
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="date" />
-                <YAxis tickFormatter={(value) => `${value.toFixed(2)} GB`} />
+                <YAxis tickFormatter={(value) => {
+                  // Convert GB back to bytes for proper auto-scaling
+                  const bytes = value * 1024 * 1024 * 1024;
+                  return formatBytes(bytes);
+                }} />
                 <Tooltip 
                   formatter={(value: number, name: string, props: any) => {
                     // Recharts passes: value, name (bucket name), and props with payload

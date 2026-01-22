@@ -17,7 +17,9 @@ const formatYAxisObjects = (tickItem: number) => {
 };
 
 const formatYAxisSize = (tickItem: number) => {
-  return `${tickItem.toFixed(2)} GB`;
+  // Convert GB back to bytes for proper auto-scaling
+  const bytes = tickItem * 1024 * 1024 * 1024;
+  return formatBytes(bytes);
 };
 
 export default function PhaseProgressChart({ data }: PhaseProgressChartProps) {
