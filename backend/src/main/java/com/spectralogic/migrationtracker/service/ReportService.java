@@ -467,6 +467,10 @@ public class ReportService {
         switch (format) {
             case "csv":
                 return exportAsCsv(phase, progress, data, forecast, options);
+            case "html":
+                return exportAsHtml(phase, progress, data, forecast, options);
+            case "pdf":
+                return exportAsPdf(phase, progress, data, forecast, options);
             case "json":
             default:
                 return exportAsJson(phase, progress, data, forecast, options);
@@ -560,5 +564,251 @@ public class ReportService {
 
         writer.flush();
         return baos.toByteArray();
+    }
+
+    private byte[] exportAsHtml(MigrationPhase phase, PhaseProgress progress, List<MigrationData> data, Forecast forecast, ExportOptions options) throws IOException {
+        StringBuilder html = new StringBuilder();
+        html.append("<!DOCTYPE html>\n");
+        html.append("<html lang=\"en\">\n");
+        html.append("<head>\n");
+        html.append("  <meta charset=\"UTF-8\">\n");
+        html.append("  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n");
+        html.append("  <title>Phase Report: ").append(escapeHtml(phase.getName())).append("</title>\n");
+        html.append("  <style>\n");
+        html.append("    body { font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }\n");
+        html.append("    .container { max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }\n");
+        html.append("    h1 { color: #333; border-bottom: 3px solid #4CAF50; padding-bottom: 10px; }\n");
+        html.append("    h2 { color: #555; margin-top: 30px; }\n");
+        html.append("    .info-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin: 20px 0; }\n");
+        html.append("    .info-card { background: #f9f9f9; padding: 15px; border-radius: 5px; border-left: 4px solid #4CAF50; }\n");
+        html.append("    .info-label { font-weight: bold; color: #666; font-size: 0.9em; }\n");
+        html.append("    .info-value { font-size: 1.1em; color: #333; margin-top: 5px; }\n");
+        html.append("    .progress-bar { width: 100%; height: 30px; background-color: #e0e0e0; border-radius: 15px; overflow: hidden; margin: 10px 0; }\n");
+        html.append("    .progress-fill { height: 100%; background-color: #4CAF50; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; }\n");
+        html.append("    table { width: 100%; border-collapse: collapse; margin: 20px 0; }\n");
+        html.append("    th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }\n");
+        html.append("    th { background-color: #4CAF50; color: white; font-weight: bold; }\n");
+        html.append("    tr:hover { background-color: #f5f5f5; }\n");
+        html.append("    .number { text-align: right; }\n");
+        html.append("    @media print { body { background: white; } .container { box-shadow: none; } }\n");
+        html.append("  </style>\n");
+        html.append("</head>\n");
+        html.append("<body>\n");
+        html.append("  <div class=\"container\">\n");
+        html.append("    <h1>Phase Report: ").append(escapeHtml(phase.getName())).append("</h1>\n");
+        
+        // Phase Information
+        html.append("    <h2>Phase Information</h2>\n");
+        html.append("    <div class=\"info-grid\">\n");
+        html.append("      <div class=\"info-card\">\n");
+        html.append("        <div class=\"info-label\">Phase ID</div>\n");
+        html.append("        <div class=\"info-value\">").append(escapeHtml(phase.getId())).append("</div>\n");
+        html.append("      </div>\n");
+        html.append("      <div class=\"info-card\">\n");
+        html.append("        <div class=\"info-label\">Type</div>\n");
+        html.append("        <div class=\"info-value\">").append(escapeHtml(phase.getType())).append("</div>\n");
+        html.append("      </div>\n");
+        html.append("      <div class=\"info-card\">\n");
+        html.append("        <div class=\"info-label\">Source</div>\n");
+        html.append("        <div class=\"info-value\">").append(escapeHtml(phase.getSource())).append("</div>\n");
+        html.append("      </div>\n");
+        html.append("      <div class=\"info-card\">\n");
+        html.append("        <div class=\"info-label\">Target</div>\n");
+        html.append("        <div class=\"info-value\">").append(escapeHtml(phase.getTarget())).append("</div>\n");
+        html.append("      </div>\n");
+        html.append("      <div class=\"info-card\">\n");
+        html.append("        <div class=\"info-label\">Created</div>\n");
+        html.append("        <div class=\"info-value\">").append(phase.getCreatedAt().toString()).append("</div>\n");
+        html.append("      </div>\n");
+        html.append("      <div class=\"info-card\">\n");
+        html.append("        <div class=\"info-label\">Last Updated</div>\n");
+        html.append("        <div class=\"info-value\">").append(phase.getLastUpdated().toString()).append("</div>\n");
+        html.append("      </div>\n");
+        html.append("    </div>\n");
+        
+        // Progress
+        html.append("    <h2>Progress</h2>\n");
+        html.append("    <div class=\"info-grid\">\n");
+        html.append("      <div class=\"info-card\">\n");
+        html.append("        <div class=\"info-label\">Overall Progress</div>\n");
+        html.append("        <div class=\"progress-bar\">\n");
+        html.append("          <div class=\"progress-fill\" style=\"width: ").append(progress.getProgress()).append("%\">").append(progress.getProgress()).append("%</div>\n");
+        html.append("        </div>\n");
+        html.append("      </div>\n");
+        html.append("    </div>\n");
+        html.append("    <div class=\"info-grid\">\n");
+        html.append("      <div class=\"info-card\">\n");
+        html.append("        <div class=\"info-label\">Source Objects</div>\n");
+        html.append("        <div class=\"info-value\">").append(String.format("%,d", progress.getSourceObjects())).append("</div>\n");
+        html.append("      </div>\n");
+        html.append("      <div class=\"info-card\">\n");
+        html.append("        <div class=\"info-label\">Target Objects</div>\n");
+        html.append("        <div class=\"info-value\">").append(String.format("%,d", progress.getTargetObjects())).append("</div>\n");
+        html.append("      </div>\n");
+        html.append("      <div class=\"info-card\">\n");
+        html.append("        <div class=\"info-label\">Source Size</div>\n");
+        html.append("        <div class=\"info-value\">").append(formatBytes(progress.getSourceSize())).append("</div>\n");
+        html.append("      </div>\n");
+        html.append("      <div class=\"info-card\">\n");
+        html.append("        <div class=\"info-label\">Target Size</div>\n");
+        html.append("        <div class=\"info-value\">").append(formatBytes(progress.getTargetSize())).append("</div>\n");
+        html.append("      </div>\n");
+        html.append("    </div>\n");
+        
+        // Forecast
+        if (options.getIncludeForecast() != null && options.getIncludeForecast()) {
+            html.append("    <h2>Forecast</h2>\n");
+            html.append("    <div class=\"info-grid\">\n");
+            html.append("      <div class=\"info-card\">\n");
+            html.append("        <div class=\"info-label\">Average Rate</div>\n");
+            html.append("        <div class=\"info-value\">").append(String.format("%,d", forecast.getAverageRate())).append(" objects/day</div>\n");
+            html.append("      </div>\n");
+            html.append("      <div class=\"info-card\">\n");
+            html.append("        <div class=\"info-label\">Remaining Objects</div>\n");
+            html.append("        <div class=\"info-value\">").append(String.format("%,d", forecast.getRemainingObjects())).append("</div>\n");
+            html.append("      </div>\n");
+            html.append("      <div class=\"info-card\">\n");
+            html.append("        <div class=\"info-label\">Remaining Size</div>\n");
+            html.append("        <div class=\"info-value\">").append(formatBytes(forecast.getRemainingSize())).append("</div>\n");
+            html.append("      </div>\n");
+            html.append("      <div class=\"info-card\">\n");
+            html.append("        <div class=\"info-label\">ETA</div>\n");
+            html.append("        <div class=\"info-value\">").append(forecast.getEta().toString()).append("</div>\n");
+            html.append("      </div>\n");
+            html.append("      <div class=\"info-card\">\n");
+            html.append("        <div class=\"info-label\">Confidence</div>\n");
+            html.append("        <div class=\"info-value\">").append(forecast.getConfidence()).append("%</div>\n");
+            html.append("      </div>\n");
+            html.append("    </div>\n");
+        }
+        
+        // Data Points
+        if (options.getIncludeRawData() != null && options.getIncludeRawData() && !data.isEmpty()) {
+            html.append("    <h2>Data Points</h2>\n");
+            html.append("    <table>\n");
+            html.append("      <thead>\n");
+            html.append("        <tr>\n");
+            html.append("          <th>Timestamp</th>\n");
+            html.append("          <th class=\"number\">Source Objects</th>\n");
+            html.append("          <th class=\"number\">Target Objects</th>\n");
+            html.append("          <th class=\"number\">Source Size</th>\n");
+            html.append("          <th class=\"number\">Target Size</th>\n");
+            html.append("          <th>Type</th>\n");
+            html.append("        </tr>\n");
+            html.append("      </thead>\n");
+            html.append("      <tbody>\n");
+            DateTimeFormatter formatter = DateTimeFormatter.ISO_LOCAL_DATE;
+            for (MigrationData point : data) {
+                html.append("        <tr>\n");
+                html.append("          <td>").append(point.getTimestamp().format(formatter)).append("</td>\n");
+                html.append("          <td class=\"number\">").append(String.format("%,d", point.getSourceObjects())).append("</td>\n");
+                html.append("          <td class=\"number\">").append(String.format("%,d", point.getTargetObjects())).append("</td>\n");
+                html.append("          <td class=\"number\">").append(formatBytes(point.getSourceSize())).append("</td>\n");
+                html.append("          <td class=\"number\">").append(formatBytes(point.getTargetSize())).append("</td>\n");
+                html.append("          <td>").append(escapeHtml(point.getType())).append("</td>\n");
+                html.append("        </tr>\n");
+            }
+            html.append("      </tbody>\n");
+            html.append("    </table>\n");
+        }
+        
+        html.append("  </div>\n");
+        html.append("</body>\n");
+        html.append("</html>\n");
+        
+        return html.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    private byte[] exportAsPdf(MigrationPhase phase, PhaseProgress progress, List<MigrationData> data, Forecast forecast, ExportOptions options) throws IOException {
+        try {
+            org.apache.pdfbox.pdmodel.PDDocument document = new org.apache.pdfbox.pdmodel.PDDocument();
+            org.apache.pdfbox.pdmodel.PDPage page = new org.apache.pdfbox.pdmodel.PDPage();
+            document.addPage(page);
+            
+            org.apache.pdfbox.pdmodel.PDPageContentStream contentStream = new org.apache.pdfbox.pdmodel.PDPageContentStream(document, page);
+            contentStream.setFont(org.apache.pdfbox.pdmodel.font.PDType1Font.HELVETICA_BOLD, 16);
+            contentStream.beginText();
+            contentStream.newLineAtOffset(50, 750);
+            contentStream.showText("Phase Report: " + phase.getName());
+            contentStream.endText();
+            
+            contentStream.setFont(org.apache.pdfbox.pdmodel.font.PDType1Font.HELVETICA, 12);
+            float y = 720;
+            contentStream.beginText();
+            contentStream.newLineAtOffset(50, y);
+            contentStream.showText("Phase ID: " + phase.getId());
+            contentStream.endText();
+            
+            y -= 20;
+            contentStream.beginText();
+            contentStream.newLineAtOffset(50, y);
+            contentStream.showText("Source: " + phase.getSource() + " → Target: " + phase.getTarget());
+            contentStream.endText();
+            
+            y -= 20;
+            contentStream.beginText();
+            contentStream.newLineAtOffset(50, y);
+            contentStream.showText("Progress: " + progress.getProgress() + "%");
+            contentStream.endText();
+            
+            y -= 20;
+            contentStream.beginText();
+            contentStream.newLineAtOffset(50, y);
+            contentStream.showText("Source Objects: " + String.format("%,d", progress.getSourceObjects()) + 
+                                 " | Target Objects: " + String.format("%,d", progress.getTargetObjects()));
+            contentStream.endText();
+            
+            y -= 20;
+            contentStream.beginText();
+            contentStream.newLineAtOffset(50, y);
+            contentStream.showText("Source Size: " + formatBytes(progress.getSourceSize()) + 
+                                 " | Target Size: " + formatBytes(progress.getTargetSize()));
+            contentStream.endText();
+            
+            if (options.getIncludeForecast() != null && options.getIncludeForecast()) {
+                y -= 30;
+                contentStream.setFont(org.apache.pdfbox.pdmodel.font.PDType1Font.HELVETICA_BOLD, 14);
+                contentStream.beginText();
+                contentStream.newLineAtOffset(50, y);
+                contentStream.showText("Forecast");
+                contentStream.endText();
+                
+                contentStream.setFont(org.apache.pdfbox.pdmodel.font.PDType1Font.HELVETICA, 12);
+                y -= 20;
+                contentStream.beginText();
+                contentStream.newLineAtOffset(50, y);
+                contentStream.showText("ETA: " + forecast.getEta().toString() + 
+                                     " | Confidence: " + forecast.getConfidence() + "%");
+                contentStream.endText();
+            }
+            
+            contentStream.close();
+            
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            document.save(baos);
+            document.close();
+            
+            return baos.toByteArray();
+        } catch (Exception e) {
+            throw new IOException("Failed to generate PDF", e);
+        }
+    }
+
+    private String escapeHtml(String text) {
+        if (text == null) return "";
+        return text.replace("&", "&amp;")
+                   .replace("<", "&lt;")
+                   .replace(">", "&gt;")
+                   .replace("\"", "&quot;")
+                   .replace("'", "&#39;");
+    }
+
+    private String formatBytes(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return String.format("%.2f KB", bytes / 1024.0);
+        if (bytes < 1024 * 1024 * 1024) return String.format("%.2f MB", bytes / (1024.0 * 1024.0));
+        if (bytes < 1024L * 1024 * 1024 * 1024) return String.format("%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0));
+        if (bytes < 1024L * 1024 * 1024 * 1024 * 1024) return String.format("%.2f TB", bytes / (1024.0 * 1024.0 * 1024.0 * 1024.0));
+        return String.format("%.2f PB", bytes / (1024.0 * 1024.0 * 1024.0 * 1024.0 * 1024.0));
     }
 }

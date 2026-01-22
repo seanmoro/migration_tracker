@@ -58,6 +58,14 @@ public class ReportController {
                     contentType = "text/csv";
                     filename = "phase-export-" + phaseId + ".csv";
                     break;
+                case "html":
+                    contentType = "text/html";
+                    filename = "phase-report-" + phaseId + ".html";
+                    break;
+                case "pdf":
+                    contentType = "application/pdf";
+                    filename = "phase-report-" + phaseId + ".pdf";
+                    break;
                 case "json":
                 default:
                     contentType = "application/json";
