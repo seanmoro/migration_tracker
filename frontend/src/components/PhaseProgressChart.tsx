@@ -6,20 +6,6 @@ interface PhaseProgressChartProps {
   data: MigrationData[];
 }
 
-const formatTooltipValue = (value: number, name: string, payload: any) => {
-  if (name.includes('Size')) {
-    // If payload has original sizeBytes, use that for formatting, otherwise use GB value
-    if (payload && payload.originalSizeBytes !== undefined) {
-      return [formatBytes(payload.originalSizeBytes), name];
-    }
-    // Fallback: convert GB back to bytes for formatting (approximate)
-    const bytes = value * 1024 * 1024 * 1024;
-    return [formatBytes(bytes), name];
-  }
-  // For objects, format as number with 2 decimals if needed
-  return [value.toLocaleString('en-US', { maximumFractionDigits: 2 }), name];
-};
-
 const formatYAxisObjects = (tickItem: number) => {
   if (tickItem >= 1000000) {
     return `${(tickItem / 1000000).toFixed(2)}M`;
