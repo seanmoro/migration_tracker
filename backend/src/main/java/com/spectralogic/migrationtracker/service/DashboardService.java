@@ -27,29 +27,36 @@ public class DashboardService {
     public DashboardStats getStats() {
         DashboardStats stats = new DashboardStats();
         
-        // Count only active phases
+        // Count only active phases (with active customer and project)
         Integer activePhases = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM migration_phase WHERE (active IS NULL OR active = 1)",
+            "SELECT COUNT(*) FROM migration_phase mp " +
+            "JOIN migration_project pj ON mp.migration_id = pj.id " +
+            "JOIN customer c ON pj.customer_id = c.id " +
+            "WHERE c.active = 1 AND pj.active = 1 AND (mp.active IS NULL OR mp.active = 1)",
             Integer.class
         );
         stats.setActiveMigrations(activePhases != null ? activePhases : 0);
 
-        // Sum total objects migrated - only from active phases
+        // Sum total objects migrated - only from active phases (with active customer and project)
         Long totalObjects = jdbcTemplate.queryForObject(
             "SELECT COALESCE(SUM(md.target_objects), 0) " +
             "FROM migration_data md " +
             "JOIN migration_phase mp ON md.migration_phase_id = mp.id " +
-            "WHERE md.type = 'DATA' AND (mp.active IS NULL OR mp.active = 1)",
+            "JOIN migration_project pj ON mp.migration_id = pj.id " +
+            "JOIN customer c ON pj.customer_id = c.id " +
+            "WHERE md.type = 'DATA' AND c.active = 1 AND pj.active = 1 AND (mp.active IS NULL OR mp.active = 1)",
             Long.class
         );
         stats.setTotalObjectsMigrated(totalObjects != null ? totalObjects : 0L);
 
-        // Calculate average progress - only from active phases
+        // Calculate average progress - only from active phases (with active customer and project)
         Integer avgProgress = jdbcTemplate.queryForObject(
             "SELECT AVG(CASE WHEN md.source_objects > 0 THEN (md.target_objects * 100 / md.source_objects) ELSE 0 END) " +
             "FROM migration_data md " +
             "JOIN migration_phase mp ON md.migration_phase_id = mp.id " +
-            "WHERE md.type = 'DATA' AND (mp.active IS NULL OR mp.active = 1)",
+            "JOIN migration_project pj ON mp.migration_id = pj.id " +
+            "JOIN customer c ON pj.customer_id = c.id " +
+            "WHERE md.type = 'DATA' AND c.active = 1 AND pj.active = 1 AND (mp.active IS NULL OR mp.active = 1)",
             Integer.class
         );
         stats.setAverageProgress(avgProgress != null ? avgProgress : 0);
@@ -65,10 +72,14 @@ public class DashboardService {
     public List<PhaseProgress> getActivePhases() {
         List<PhaseProgress> progressList = new ArrayList<>();
         
-        // Get only active phases from database (increased limit to show more)
+        // Get only active phases from database (with active customer and project)
         // Filter by active = 1 (or active IS NULL for backward compatibility)
         List<MigrationPhase> allPhases = jdbcTemplate.query(
-            "SELECT * FROM migration_phase WHERE (active IS NULL OR active = 1) ORDER BY created_at DESC LIMIT 100",
+            "SELECT mp.* FROM migration_phase mp " +
+            "JOIN migration_project pj ON mp.migration_id = pj.id " +
+            "JOIN customer c ON pj.customer_id = c.id " +
+            "WHERE c.active = 1 AND pj.active = 1 AND (mp.active IS NULL OR mp.active = 1) " +
+            "ORDER BY mp.created_at DESC LIMIT 100",
             (rs, rowNum) -> {
                 MigrationPhase phase = new MigrationPhase();
                 phase.setId(rs.getString("id"));
@@ -193,10 +204,14 @@ public class DashboardService {
     public List<PhaseProgress> getPhasesNeedingAttention() {
         List<PhaseProgress> attentionList = new ArrayList<>();
         
-        // Get only active phases and check their latest progress
+        // Get only active phases (with active customer and project) and check their latest progress
         // Filter by active = 1 (or active IS NULL for backward compatibility)
         List<MigrationPhase> activePhases = jdbcTemplate.query(
-            "SELECT * FROM migration_phase WHERE (active IS NULL OR active = 1) ORDER BY created_at DESC",
+            "SELECT mp.* FROM migration_phase mp " +
+            "JOIN migration_project pj ON mp.migration_id = pj.id " +
+            "JOIN customer c ON pj.customer_id = c.id " +
+            "WHERE c.active = 1 AND pj.active = 1 AND (mp.active IS NULL OR mp.active = 1) " +
+            "ORDER BY mp.created_at DESC",
             (rs, rowNum) -> {
                 MigrationPhase phase = new MigrationPhase();
                 phase.setId(rs.getString("id"));
@@ -224,12 +239,14 @@ public class DashboardService {
     }
 
     public List<Object> getRecentActivity() {
-        // Return recent migration data points - only from active phases
+        // Return recent migration data points - only from active phases (with active customer and project)
         return jdbcTemplate.query(
             "SELECT md.*, mp.name as phase_name " +
             "FROM migration_data md " +
             "JOIN migration_phase mp ON md.migration_phase_id = mp.id " +
-            "WHERE (mp.active IS NULL OR mp.active = 1) " +
+            "JOIN migration_project pj ON mp.migration_id = pj.id " +
+            "JOIN customer c ON pj.customer_id = c.id " +
+            "WHERE c.active = 1 AND pj.active = 1 AND (mp.active IS NULL OR mp.active = 1) " +
             "ORDER BY md.timestamp DESC LIMIT 10",
             (rs, rowNum) -> {
                 java.util.Map<String, Object> activity = new java.util.HashMap<>();
