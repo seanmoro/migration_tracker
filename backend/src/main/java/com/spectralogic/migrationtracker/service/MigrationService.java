@@ -259,21 +259,73 @@ public class MigrationService {
                 }
             }
 
-            // If we got totals, create a single aggregate bucket data entry
-            // Note: We're not storing per-bucket data anymore, just aggregate by storage domain
-            // This matches how reporting works - query by storage domain, not by individual buckets
-            if (totalObjects > 0 || totalSize > 0) {
-                BucketData bucketData = new BucketData();
-                bucketData.setMigrationPhaseId(phaseId);
-                bucketData.setTimestamp(date);
-                bucketData.setBucketName(storageDomain); // Use storage domain name as bucket name
-                bucketData.setSource(databaseType.toLowerCase());
-                bucketData.setObjectCount(totalObjects);
-                bucketData.setSizeBytes(totalSize);
-                bucketDataList.add(bucketDataRepository.save(bucketData));
-                logger.info("Stored aggregate data for storage domain '{}' ({}): {} objects, {} bytes", storageDomain, context, totalObjects, totalSize);
+            // If buckets are selected, query each bucket separately and store per-bucket data
+            // Otherwise, store aggregate data for the storage domain
+            if (selectedBuckets != null && !selectedBuckets.isEmpty()) {
+                // Query each selected bucket separately
+                for (String bucketName : selectedBuckets) {
+                    String bucketFilter = " AND b.name = ?";
+                    Object[] bucketParams = new Object[]{storageDomain, bucketName};
+                    
+                    try {
+                        Long bucketCount = jdbc.queryForObject(
+                            "SELECT COUNT(DISTINCT so.id) " +
+                            "FROM ds3.storage_domain sd " +
+                            "JOIN ds3.storage_domain_member sdm ON sdm.storage_domain_id = sd.id " +
+                            "JOIN tape.tape t ON t.storage_domain_member_id = sdm.id " +
+                            "JOIN tape.blob_tape bt ON bt.tape_id = t.id " +
+                            "JOIN ds3.blob bl ON bl.id = bt.blob_id " +
+                            "JOIN ds3.s3_object so ON so.id = bl.object_id " +
+                            "JOIN ds3.bucket b ON b.id = so.bucket_id " +
+                            "WHERE sd.name ILIKE ?" + bucketFilter,
+                            Long.class,
+                            bucketParams
+                        );
+                        Long bucketSize = jdbc.queryForObject(
+                            "SELECT COALESCE(SUM(bl.length), 0) " +
+                            "FROM ds3.storage_domain sd " +
+                            "JOIN ds3.storage_domain_member sdm ON sdm.storage_domain_id = sd.id " +
+                            "JOIN tape.tape t ON t.storage_domain_member_id = sdm.id " +
+                            "JOIN tape.blob_tape bt ON bt.tape_id = t.id " +
+                            "JOIN ds3.blob bl ON bl.id = bt.blob_id " +
+                            "JOIN ds3.s3_object so ON so.id = bl.object_id " +
+                            "JOIN ds3.bucket b ON b.id = so.bucket_id " +
+                            "WHERE sd.name ILIKE ?" + bucketFilter,
+                            Long.class,
+                            bucketParams
+                        );
+                        
+                        if (bucketCount != null && bucketSize != null) {
+                            BucketData bucketData = new BucketData();
+                            bucketData.setMigrationPhaseId(phaseId);
+                            bucketData.setTimestamp(date);
+                            bucketData.setBucketName(bucketName); // Store actual bucket name
+                            bucketData.setSource(databaseType.toLowerCase());
+                            bucketData.setObjectCount(bucketCount);
+                            bucketData.setSizeBytes(bucketSize);
+                            bucketDataList.add(bucketDataRepository.save(bucketData));
+                            logger.info("Stored data for bucket '{}' in storage domain '{}' ({}): {} objects, {} bytes", 
+                                bucketName, storageDomain, context, bucketCount, bucketSize);
+                        }
+                    } catch (Exception e) {
+                        logger.warn("Failed to query bucket '{}' in storage domain '{}': {}", bucketName, storageDomain, e.getMessage());
+                    }
+                }
             } else {
-                logger.warn("No objects found for storage domain '{}' ({})", storageDomain, context);
+                // No buckets selected, store aggregate data for the storage domain
+                if (totalObjects > 0 || totalSize > 0) {
+                    BucketData bucketData = new BucketData();
+                    bucketData.setMigrationPhaseId(phaseId);
+                    bucketData.setTimestamp(date);
+                    bucketData.setBucketName(storageDomain); // Use storage domain name as bucket name
+                    bucketData.setSource(databaseType.toLowerCase());
+                    bucketData.setObjectCount(totalObjects);
+                    bucketData.setSizeBytes(totalSize);
+                    bucketDataList.add(bucketDataRepository.save(bucketData));
+                    logger.info("Stored aggregate data for storage domain '{}' ({}): {} objects, {} bytes", storageDomain, context, totalObjects, totalSize);
+                } else {
+                    logger.warn("No objects found for storage domain '{}' ({})", storageDomain, context);
+                }
             }
 
             logger.info("Stored {} bucket data points for phase {} ({})", bucketDataList.size(), phaseId, context);

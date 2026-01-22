@@ -11,6 +11,7 @@ import com.spectralogic.migrationtracker.model.Customer;
 import com.spectralogic.migrationtracker.model.MigrationData;
 import com.spectralogic.migrationtracker.model.MigrationPhase;
 import com.spectralogic.migrationtracker.model.MigrationProject;
+import com.spectralogic.migrationtracker.repository.BucketDataRepository;
 import com.spectralogic.migrationtracker.repository.MigrationDataRepository;
 import com.spectralogic.migrationtracker.repository.PhaseRepository;
 import org.slf4j.Logger;
@@ -43,6 +44,7 @@ public class ReportService {
     private final ProjectService projectService;
     private final CustomerService customerService;
     private final PostgreSQLConfig postgresConfig;
+    private final BucketDataRepository bucketDataRepository;
 
     @Value("${postgres.blackpearl.host:localhost}")
     private String blackpearlHost;
@@ -70,12 +72,13 @@ public class ReportService {
 
     public ReportService(PhaseRepository phaseRepository, MigrationDataRepository dataRepository,
                          ProjectService projectService, CustomerService customerService,
-                         PostgreSQLConfig postgresConfig) {
+                         PostgreSQLConfig postgresConfig, BucketDataRepository bucketDataRepository) {
         this.phaseRepository = phaseRepository;
         this.dataRepository = dataRepository;
         this.projectService = projectService;
         this.customerService = customerService;
         this.postgresConfig = postgresConfig;
+        this.bucketDataRepository = bucketDataRepository;
     }
 
     public PhaseProgress getPhaseProgress(String phaseId) {
@@ -96,13 +99,26 @@ public class ReportService {
         logger.info("Querying progress for phase '{}' (source: '{}', target: '{}') for customer '{}'", 
             phase.getName(), phase.getSource(), phase.getTarget(), customer.getName());
         
+        // Get buckets for this phase (from BucketData records) to filter queries
+        List<String> phaseBuckets = bucketDataRepository.findByPhaseId(phaseId).stream()
+            .map(bd -> bd.getBucketName())
+            .distinct()
+            .collect(java.util.stream.Collectors.toList());
+        
+        // If no buckets found in BucketData, query all buckets (backward compatibility)
+        // Otherwise, filter by the buckets that were selected during data gathering
+        List<String> bucketsToQuery = phaseBuckets.isEmpty() ? null : phaseBuckets;
+        
+        logger.info("Phase '{}' has {} buckets to filter: {}", phaseId, 
+            bucketsToQuery != null ? bucketsToQuery.size() : 0, bucketsToQuery);
+        
         // Query PostgreSQL for current object counts, sizes, and tape counts from source and target storage domains
-        long sourceObjects = queryObjectCountByStorageDomain(customer.getId(), phase.getSource(), databaseType);
-        long sourceSize = querySizeByStorageDomain(customer.getId(), phase.getSource(), databaseType);
-        long sourceTapeCount = queryTapeCountByStorageDomain(customer.getId(), phase.getSource(), databaseType);
-        long targetObjects = queryObjectCountByStorageDomain(customer.getId(), phase.getTarget(), databaseType);
-        long targetSize = querySizeByStorageDomain(customer.getId(), phase.getTarget(), databaseType);
-        long targetTapeCount = queryTapeCountByStorageDomain(customer.getId(), phase.getTarget(), databaseType);
+        long sourceObjects = queryObjectCountByStorageDomain(customer.getId(), phase.getSource(), databaseType, bucketsToQuery);
+        long sourceSize = querySizeByStorageDomain(customer.getId(), phase.getSource(), databaseType, bucketsToQuery);
+        long sourceTapeCount = queryTapeCountByStorageDomain(customer.getId(), phase.getSource(), databaseType, bucketsToQuery);
+        long targetObjects = queryObjectCountByStorageDomain(customer.getId(), phase.getTarget(), databaseType, bucketsToQuery);
+        long targetSize = querySizeByStorageDomain(customer.getId(), phase.getTarget(), databaseType, bucketsToQuery);
+        long targetTapeCount = queryTapeCountByStorageDomain(customer.getId(), phase.getTarget(), databaseType, bucketsToQuery);
         
         // If queries returned 0, fallback to latest migration_data (if available)
         // This ensures we show something even if PostgreSQL queries fail
@@ -151,8 +167,9 @@ public class ReportService {
     
     /**
      * Query PostgreSQL for object count by storage domain name
+     * @param bucketsToQuery List of bucket names to filter by, or null to query all buckets
      */
-    private long queryObjectCountByStorageDomain(String customerId, String storageDomainName, String databaseType) {
+    private long queryObjectCountByStorageDomain(String customerId, String storageDomainName, String databaseType, List<String> bucketsToQuery) {
         try {
             Customer customer = customerService.findById(customerId);
             String customerName = customer.getName().toLowerCase().replaceAll("[^a-z0-9]", "_");
@@ -211,6 +228,21 @@ public class ReportService {
             // Pattern 1: Storage Domain -> Storage Domain Member -> Tape -> Blob Tape -> Blob -> Objects
             // This is the correct relationship for objects actually on tapes: 
             // storage_domain -> storage_domain_member -> tape -> blob_tape -> blob -> s3_object -> bucket
+            String bucketFilter = "";
+            Object[] params;
+            if (bucketsToQuery != null && !bucketsToQuery.isEmpty()) {
+                // Build IN clause for bucket filtering
+                String placeholders = java.util.stream.IntStream.range(0, bucketsToQuery.size())
+                    .mapToObj(i -> "?")
+                    .collect(java.util.stream.Collectors.joining(","));
+                bucketFilter = " AND b.name IN (" + placeholders + ")";
+                params = new Object[bucketsToQuery.size() + 1];
+                params[0] = storageDomainName;
+                System.arraycopy(bucketsToQuery.toArray(), 0, params, 1, bucketsToQuery.size());
+            } else {
+                params = new Object[]{storageDomainName};
+            }
+            
             try {
                 Long count = jdbc.queryForObject(
                     "SELECT COUNT(DISTINCT so.id) " +
@@ -220,9 +252,10 @@ public class ReportService {
                     "JOIN tape.blob_tape bt ON bt.tape_id = t.id " +
                     "JOIN ds3.blob bl ON bl.id = bt.blob_id " +
                     "JOIN ds3.s3_object so ON so.id = bl.object_id " +
-                    "WHERE sd.name ILIKE ?",
+                    "JOIN ds3.bucket b ON b.id = so.bucket_id " +
+                    "WHERE sd.name ILIKE ?" + bucketFilter,
                     Long.class,
-                    storageDomainName
+                    params
                 );
                 if (count != null && count > 0) {
                     logger.info("Found {} objects on tapes for storage domain '{}' in database {} (pattern 1 - via blob_tape)", count, storageDomainName, actualDatabaseName);
@@ -346,8 +379,9 @@ public class ReportService {
     
     /**
      * Query PostgreSQL for total size by storage domain name
+     * @param bucketsToQuery List of bucket names to filter by, or null to query all buckets
      */
-    private long querySizeByStorageDomain(String customerId, String storageDomainName, String databaseType) {
+    private long querySizeByStorageDomain(String customerId, String storageDomainName, String databaseType, List<String> bucketsToQuery) {
         try {
             Customer customer = customerService.findById(customerId);
             String customerName = customer.getName().toLowerCase().replaceAll("[^a-z0-9]", "_");
@@ -405,6 +439,21 @@ public class ReportService {
             // Count only objects actually stored on tapes in the storage domain
             // Pattern 1: Storage Domain -> Storage Domain Member -> Tape -> Blob Tape -> Blob -> Objects
             // This is the correct relationship for objects actually on tapes
+            String bucketFilter = "";
+            Object[] params;
+            if (bucketsToQuery != null && !bucketsToQuery.isEmpty()) {
+                // Build IN clause for bucket filtering
+                String placeholders = java.util.stream.IntStream.range(0, bucketsToQuery.size())
+                    .mapToObj(i -> "?")
+                    .collect(java.util.stream.Collectors.joining(","));
+                bucketFilter = " AND b.name IN (" + placeholders + ")";
+                params = new Object[bucketsToQuery.size() + 1];
+                params[0] = storageDomainName;
+                System.arraycopy(bucketsToQuery.toArray(), 0, params, 1, bucketsToQuery.size());
+            } else {
+                params = new Object[]{storageDomainName};
+            }
+            
             try {
                 Long size = jdbc.queryForObject(
                     "SELECT COALESCE(SUM(bl.length), 0) " +
@@ -414,9 +463,10 @@ public class ReportService {
                     "JOIN tape.blob_tape bt ON bt.tape_id = t.id " +
                     "JOIN ds3.blob bl ON bl.id = bt.blob_id " +
                     "JOIN ds3.s3_object so ON so.id = bl.object_id " +
-                    "WHERE sd.name ILIKE ?",
+                    "JOIN ds3.bucket b ON b.id = so.bucket_id " +
+                    "WHERE sd.name ILIKE ?" + bucketFilter,
                     Long.class,
-                    storageDomainName
+                    params
                 );
                 if (size != null && size > 0) {
                     logger.info("Found {} bytes on tapes for storage domain '{}' in database {} (pattern 1 - via blob_tape)", size, storageDomainName, actualDatabaseName);
@@ -545,8 +595,9 @@ public class ReportService {
     
     /**
      * Query PostgreSQL for tape count by storage domain name
+     * @param bucketsToQuery List of bucket names to filter by, or null to query all buckets
      */
-    private long queryTapeCountByStorageDomain(String customerId, String storageDomainName, String databaseType) {
+    private long queryTapeCountByStorageDomain(String customerId, String storageDomainName, String databaseType, List<String> bucketsToQuery) {
         if (storageDomainName == null || storageDomainName.isEmpty()) {
             logger.warn("Storage domain name is null or empty for customer {}. Cannot query tape count.", customerId);
             return 0L;
@@ -606,15 +657,35 @@ public class ReportService {
             
             // Query tape count by storage domain
             // Tapes are linked to storage domains through storage_domain_member
+            // If buckets are specified, only count tapes that have blobs from those buckets
+            String bucketFilter = "";
+            Object[] params;
+            if (bucketsToQuery != null && !bucketsToQuery.isEmpty()) {
+                // Build IN clause for bucket filtering - join through blob_tape to filter by bucket
+                String placeholders = java.util.stream.IntStream.range(0, bucketsToQuery.size())
+                    .mapToObj(i -> "?")
+                    .collect(java.util.stream.Collectors.joining(","));
+                bucketFilter = " AND EXISTS (SELECT 1 FROM tape.blob_tape bt2 " +
+                    "JOIN ds3.blob bl2 ON bl2.id = bt2.blob_id " +
+                    "JOIN ds3.s3_object so2 ON so2.id = bl2.object_id " +
+                    "JOIN ds3.bucket b2 ON b2.id = so2.bucket_id " +
+                    "WHERE bt2.tape_id = t.id AND b2.name IN (" + placeholders + "))";
+                params = new Object[bucketsToQuery.size() + 1];
+                params[0] = storageDomainName;
+                System.arraycopy(bucketsToQuery.toArray(), 0, params, 1, bucketsToQuery.size());
+            } else {
+                params = new Object[]{storageDomainName};
+            }
+            
             try {
                 Long count = jdbc.queryForObject(
                     "SELECT COUNT(DISTINCT t.id) " +
                     "FROM ds3.storage_domain sd " +
                     "JOIN ds3.storage_domain_member sdm ON sdm.storage_domain_id = sd.id " +
                     "JOIN tape.tape t ON t.storage_domain_member_id = sdm.id " +
-                    "WHERE sd.name ILIKE ?",
+                    "WHERE sd.name ILIKE ?" + bucketFilter,
                     Long.class,
-                    storageDomainName
+                    params
                 );
                 if (count != null && count > 0) {
                     logger.info("Found {} tapes for storage domain '{}' in database {}", count, storageDomainName, actualDatabaseName);
