@@ -104,7 +104,23 @@ public class ReportService {
         
         // Read from SQLite (migration_data table) - data gathered during "gather data" operation
         // PostgreSQL is only queried during gatherData(), not during progress reports
+        
+        // Get reference point (baseline) - either REFERENCE type or first DATA point
+        Optional<MigrationData> reference = dataRepository.findReferenceByPhaseId(phaseId);
         Optional<MigrationData> latest = dataRepository.findLatestByPhaseId(phaseId);
+        
+        // If no reference point, use first data point as baseline
+        if (reference.isEmpty()) {
+            List<MigrationData> allData = dataRepository.findByPhaseId(phaseId);
+            if (!allData.isEmpty()) {
+                // Data is ordered DESC by timestamp, so last item is oldest (first data point)
+                // Use first data point (oldest) as baseline
+                MigrationData firstData = allData.get(allData.size() - 1);
+                reference = Optional.of(firstData);
+                logger.info("No REFERENCE point found for phase '{}', using first DATA point (timestamp: {}) as baseline", 
+                    phaseId, firstData.getTimestamp());
+            }
+        }
         
         long sourceObjects = 0L;
         long sourceSize = 0L;
@@ -113,20 +129,34 @@ public class ReportService {
         long sourceTapeCount = 0L;
         long targetTapeCount = 0L;
         
-        if (latest.isPresent()) {
+        // Use reference point for source (baseline), latest for target (current state)
+        if (reference.isPresent() && latest.isPresent()) {
+            MigrationData ref = reference.get();
+            MigrationData last = latest.get();
+            
+            // Source should be from baseline (reference point)
+            sourceObjects = ref.getSourceObjects() != null ? ref.getSourceObjects() : 0L;
+            sourceSize = ref.getSourceSize() != null ? ref.getSourceSize() : 0L;
+            
+            // Target should be from latest data point (current state)
+            targetObjects = last.getTargetObjects() != null ? last.getTargetObjects() : 0L;
+            targetSize = last.getTargetSize() != null ? last.getTargetSize() : 0L;
+            
+            logger.info("Using baseline (reference) for source: {} objects ({} bytes)", sourceObjects, sourceSize);
+            logger.info("Using latest data point for target: {} objects ({} bytes)", targetObjects, targetSize);
+        } else if (latest.isPresent()) {
+            // Fallback: if no reference, use latest for both (not ideal but better than 0)
             MigrationData last = latest.get();
             sourceObjects = last.getSourceObjects() != null ? last.getSourceObjects() : 0L;
             sourceSize = last.getSourceSize() != null ? last.getSourceSize() : 0L;
             targetObjects = last.getTargetObjects() != null ? last.getTargetObjects() : 0L;
             targetSize = last.getTargetSize() != null ? last.getTargetSize() : 0L;
-            logger.info("Using stored migration_data from SQLite: source={} objects ({} bytes), target={} objects ({} bytes)", 
-                sourceObjects, sourceSize, targetObjects, targetSize);
+            logger.warn("No reference point found for phase '{}', using latest data point for both source and target", phaseId);
         } else {
             logger.warn("No migration_data found in SQLite for phase '{}'. Progress will show 0. Run 'gather data' to collect metrics.", phaseId);
         }
         
         // Calculate tape counts from bucket_data if available
-        // Sum up tape counts from individual bucket data records
         // Note: Tape counts aren't stored in migration_data, so we'd need to query PostgreSQL for this
         // For now, we'll leave them as 0 since they're not critical for progress calculation
         
@@ -137,14 +167,15 @@ public class ReportService {
         progress.setTargetSize(targetSize);
         progress.setTargetTapeCount(targetTapeCount);
         
-        // Calculate progress: (target objects) / (source objects) * 100
+        // Calculate progress: (current target objects) / (baseline source objects) * 100
+        // This shows how much of the original source has been migrated to the target
         int progressPercent = sourceObjects > 0 
             ? (int) ((targetObjects * 100) / sourceObjects)
             : 0;
         
         progress.setProgress(Math.max(0, Math.min(100, progressPercent)));
         
-        logger.info("Phase progress calculated: {}% (source: {} objects, target: {} objects)", 
+        logger.info("Phase progress calculated: {}% (baseline source: {} objects, current target: {} objects)", 
             progressPercent, sourceObjects, targetObjects);
 
         return progress;
