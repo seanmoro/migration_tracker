@@ -36,19 +36,18 @@ export default function Projects() {
   });
 
   // Fetch phases for all projects (always include inactive to show all phases)
-  const { data: allPhases = [] } = useQuery({
-    queryKey: ['all-phases', projects.map(p => p.id).join(',')],
+  const { data: allPhases = [], isLoading: phasesLoading } = useQuery({
+    queryKey: ['all-phases', projects.map(p => p.id).sort().join(',')],
     queryFn: async () => {
+      console.debug(`Fetching phases for ${projects.length} projects`);
       // Fetch phases for all projects in parallel
       // Always include inactive phases so we can show all phases for each project
       const phasePromises = projects.map(project =>
         phasesApi.list(project.id, true) // true = include inactive
           .then(phases => {
-            // Log for debugging
-            if (phases.length > 0) {
-              console.debug(`Found ${phases.length} phases for project ${project.name} (${project.id})`);
-            }
-            return phases;
+            // Log for debugging - log even if 0 phases
+            console.debug(`Project ${project.name} (${project.id}): ${phases.length} phases returned`, phases);
+            return phases.map(phase => ({ ...phase, _projectId: project.id })); // Add project ID for debugging
           })
           .catch((error) => {
             console.error(`Error fetching phases for project ${project.name} (${project.id}):`, error);
@@ -57,7 +56,7 @@ export default function Projects() {
       );
       const results = await Promise.all(phasePromises);
       const allPhases = results.flat();
-      console.debug(`Total phases fetched: ${allPhases.length} for ${projects.length} projects`);
+      console.debug(`Total phases fetched: ${allPhases.length} for ${projects.length} projects`, allPhases);
       return allPhases;
     },
     enabled: projects.length > 0,
@@ -86,7 +85,12 @@ export default function Projects() {
 
   // Get phases for a specific project
   const getProjectPhases = (projectId: string) => {
-    return allPhases.filter(phase => phase.migrationId === projectId);
+    const phases = allPhases.filter(phase => phase.migrationId === projectId);
+    if (phases.length === 0 && allPhases.length > 0) {
+      // Debug: check if there's a mismatch
+      console.debug(`No phases found for project ${projectId}. All phases:`, allPhases.map(p => ({ id: p.id, name: p.name, migrationId: p.migrationId })));
+    }
+    return phases;
   };
 
   // Get progress for a specific phase
