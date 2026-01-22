@@ -222,9 +222,18 @@ export default function Projects() {
               {(() => {
                 const projectPhases = getProjectPhases(project.id);
                 // Filter by active status if showInactive is false
+                // Include phases where active is true, null, or undefined (backward compatibility)
                 const visiblePhases = showInactive 
                   ? projectPhases 
-                  : projectPhases.filter(phase => phase.active !== false);
+                  : projectPhases.filter(phase => phase.active === true || phase.active === null || phase.active === undefined);
+                
+                // Debug logging
+                if (projectPhases.length > 0 && visiblePhases.length === 0) {
+                  console.debug(`Project ${project.name} has ${projectPhases.length} total phases, but ${visiblePhases.length} visible (showInactive=${showInactive})`);
+                  projectPhases.forEach(phase => {
+                    console.debug(`  Phase ${phase.name}: active=${phase.active} (type: ${typeof phase.active})`);
+                  });
+                }
                 
                 if (visiblePhases.length === 0) {
                   return (
