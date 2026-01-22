@@ -221,7 +221,12 @@ export default function Projects() {
               {/* Phases List */}
               {(() => {
                 const projectPhases = getProjectPhases(project.id);
-                if (projectPhases.length === 0) {
+                // Filter by active status if showInactive is false
+                const visiblePhases = showInactive 
+                  ? projectPhases 
+                  : projectPhases.filter(phase => phase.active !== false);
+                
+                if (visiblePhases.length === 0) {
                   return (
                     <div className="mb-4 text-sm text-gray-500 text-center py-2">
                       No phases yet
@@ -230,7 +235,7 @@ export default function Projects() {
                 }
                 return (
                   <div className="mb-4 space-y-3">
-                    {projectPhases.map((phase) => (
+                    {visiblePhases.map((phase) => (
                       <div key={phase.id} className={`border rounded p-2 hover:bg-gray-50 transition-colors ${
                         (phase.active === false) ? 'border-red-200 bg-red-50' : 'border-gray-200'
                       }`}>
