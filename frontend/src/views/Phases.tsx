@@ -106,9 +106,14 @@ export default function Phases() {
   };
 
   const handleQuickGatherData = (phase: MigrationPhase) => {
+    const projectId = phase.migrationId || (phase as any)?.projectId;
+    if (!projectId) {
+      toast.error('Phase has no project ID');
+      return;
+    }
     navigate('/gather-data', {
       state: {
-        projectId: phase.migrationId,
+        projectId: projectId,
         phaseId: phase.id,
       },
     });
