@@ -156,4 +156,12 @@ public class MigrationDataRepository {
         }
         return data;
     }
+
+    public void deleteByPhaseIdAndTimestamp(String phaseId, LocalDate timestamp) {
+        jdbcTemplate.update(
+            "DELETE FROM migration_data WHERE migration_phase_id = ? AND timestamp = ?",
+            phaseId,
+            timestamp
+        );
+    }
 }

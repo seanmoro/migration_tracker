@@ -89,4 +89,12 @@ public class MigrationController {
         }
         return ResponseEntity.ok(data);
     }
+
+    @DeleteMapping("/data")
+    public ResponseEntity<Void> deleteDataPoint(
+            @RequestParam String phaseId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        service.deleteDataPoint(phaseId, date);
+        return ResponseEntity.noContent().build();
+    }
 }

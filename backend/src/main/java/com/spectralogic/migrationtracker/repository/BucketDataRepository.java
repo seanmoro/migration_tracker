@@ -180,4 +180,12 @@ public class BucketDataRepository {
     public void deleteByPhaseId(String phaseId) {
         jdbcTemplate.update("DELETE FROM bucket_data WHERE migration_phase_id = ?", phaseId);
     }
+
+    public void deleteByPhaseIdAndTimestamp(String phaseId, LocalDate timestamp) {
+        jdbcTemplate.update(
+            "DELETE FROM bucket_data WHERE migration_phase_id = ? AND timestamp = ?",
+            phaseId,
+            timestamp.toString()
+        );
+    }
 }

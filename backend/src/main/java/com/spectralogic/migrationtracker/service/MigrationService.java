@@ -353,4 +353,10 @@ public class MigrationService {
     public List<BucketData> getBucketDataByPhaseAndDateRange(String phaseId, LocalDate from, LocalDate to) {
         return bucketDataRepository.findByPhaseIdAndDateRange(phaseId, from, to);
     }
+
+    public void deleteDataPoint(String phaseId, LocalDate date) {
+        // Delete both migration_data and bucket_data for this phase and date
+        repository.deleteByPhaseIdAndTimestamp(phaseId, date);
+        bucketDataRepository.deleteByPhaseIdAndTimestamp(phaseId, date);
+    }
 }
