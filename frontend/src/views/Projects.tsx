@@ -224,6 +224,14 @@ export default function Projects() {
 
               {/* Phases List */}
               {(() => {
+                if (phasesLoading) {
+                  return (
+                    <div className="mb-4 text-sm text-gray-500 text-center py-2">
+                      Loading phases...
+                    </div>
+                  );
+                }
+                
                 const projectPhases = getProjectPhases(project.id);
                 // Filter by active status if showInactive is false
                 // Include phases where active is true, null, or undefined (backward compatibility)
