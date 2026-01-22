@@ -11,6 +11,8 @@ public class PhaseProgress {
     private String eta;
     private Integer confidence;
     private Long averageRate;
+    private Long sourceTapeCount;
+    private Long targetTapeCount;
 
     // Getters and Setters
     public String getPhaseId() {
@@ -91,5 +93,21 @@ public class PhaseProgress {
 
     public void setAverageRate(Long averageRate) {
         this.averageRate = averageRate;
+    }
+
+    public Long getSourceTapeCount() {
+        return sourceTapeCount;
+    }
+
+    public void setSourceTapeCount(Long sourceTapeCount) {
+        this.sourceTapeCount = sourceTapeCount;
+    }
+
+    public Long getTargetTapeCount() {
+        return targetTapeCount;
+    }
+
+    public void setTargetTapeCount(Long targetTapeCount) {
+        this.targetTapeCount = targetTapeCount;
     }
 }

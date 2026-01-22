@@ -92,10 +92,70 @@ export default function PhaseProgress() {
           </p>
         </div>
         <div className="card">
-          <h3 className="text-sm font-medium text-gray-600 mb-2">Total Size</h3>
+          <h3 className="text-sm font-medium text-gray-600 mb-2">Objects Remaining</h3>
           <p className="text-3xl font-bold text-gray-900">
-            {formatBytes(progress?.sourceSize || 0)}
+            {formatNumber((progress?.sourceObjects || 0) - (progress?.targetObjects || 0))}
           </p>
+        </div>
+      </div>
+
+      {/* Storage Domain Details */}
+      <div className="card">
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">Storage Domain Details</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Source Storage Domain */}
+          <div className="border border-gray-200 rounded-lg p-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-3">Source: {phase.source}</h3>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Objects</span>
+                <span className="text-sm font-semibold text-gray-900">
+                  {formatNumber(progress?.sourceObjects || 0)}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Data Size</span>
+                <span className="text-sm font-semibold text-gray-900">
+                  {formatBytes(progress?.sourceSize || 0)}
+                </span>
+              </div>
+              {progress?.sourceTapeCount !== undefined && (
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Tapes</span>
+                  <span className="text-sm font-semibold text-gray-900">
+                    {formatNumber(progress.sourceTapeCount)}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Target Storage Domain */}
+          <div className="border border-gray-200 rounded-lg p-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-3">Target: {phase.target}</h3>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Objects</span>
+                <span className="text-sm font-semibold text-gray-900">
+                  {formatNumber(progress?.targetObjects || 0)}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Data Size</span>
+                <span className="text-sm font-semibold text-gray-900">
+                  {formatBytes(progress?.targetSize || 0)}
+                </span>
+              </div>
+              {progress?.targetTapeCount !== undefined && (
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Tapes</span>
+                  <span className="text-sm font-semibold text-gray-900">
+                    {formatNumber(progress.targetTapeCount)}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 

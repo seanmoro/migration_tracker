@@ -53,6 +53,8 @@ export interface PhaseProgress {
   targetObjects: number;
   sourceSize: number;
   targetSize: number;
+  sourceTapeCount?: number;
+  targetTapeCount?: number;
   eta?: string;
   confidence?: number;
   averageRate?: number;

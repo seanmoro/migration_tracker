@@ -96,11 +96,13 @@ public class ReportService {
         logger.info("Querying progress for phase '{}' (source: '{}', target: '{}') for customer '{}'", 
             phase.getName(), phase.getSource(), phase.getTarget(), customer.getName());
         
-        // Query PostgreSQL for current object counts from source and target storage domains
+        // Query PostgreSQL for current object counts, sizes, and tape counts from source and target storage domains
         long sourceObjects = queryObjectCountByStorageDomain(customer.getId(), phase.getSource(), databaseType);
         long sourceSize = querySizeByStorageDomain(customer.getId(), phase.getSource(), databaseType);
+        long sourceTapeCount = queryTapeCountByStorageDomain(customer.getId(), phase.getSource(), databaseType);
         long targetObjects = queryObjectCountByStorageDomain(customer.getId(), phase.getTarget(), databaseType);
         long targetSize = querySizeByStorageDomain(customer.getId(), phase.getTarget(), databaseType);
+        long targetTapeCount = queryTapeCountByStorageDomain(customer.getId(), phase.getTarget(), databaseType);
         
         // If queries returned 0, fallback to latest migration_data (if available)
         // This ensures we show something even if PostgreSQL queries fail
@@ -119,8 +121,10 @@ public class ReportService {
         
         progress.setSourceObjects(sourceObjects);
         progress.setSourceSize(sourceSize);
+        progress.setSourceTapeCount(sourceTapeCount);
         progress.setTargetObjects(targetObjects);
         progress.setTargetSize(targetSize);
+        progress.setTargetTapeCount(targetTapeCount);
         
         // Calculate progress: (target objects) / (source objects) * 100
         int progressPercent = sourceObjects > 0 
@@ -488,6 +492,95 @@ public class ReportService {
             return 0L;
         } catch (Exception e) {
             logger.error("Error querying size for storage domain '{}': {}", storageDomainName, e.getMessage(), e);
+            return 0L;
+        }
+    }
+    
+    /**
+     * Query PostgreSQL for tape count by storage domain name
+     */
+    private long queryTapeCountByStorageDomain(String customerId, String storageDomainName, String databaseType) {
+        if (storageDomainName == null || storageDomainName.isEmpty()) {
+            logger.warn("Storage domain name is null or empty for customer {}. Cannot query tape count.", customerId);
+            return 0L;
+        }
+        try {
+            Customer customer = customerService.findById(customerId);
+            String customerName = customer.getName().toLowerCase().replaceAll("[^a-z0-9]", "_");
+            
+            // Construct customer-specific database name
+            String databaseName;
+            String host;
+            int port;
+            String username;
+            String password;
+            
+            if (databaseType.equalsIgnoreCase("blackpearl")) {
+                databaseName = "tapesystem_" + customerName;
+                host = blackpearlHost;
+                port = blackpearlPort;
+                username = blackpearlUsername;
+                password = blackpearlPassword != null ? blackpearlPassword : "";
+            } else {
+                databaseName = "rio_db_" + customerName;
+                host = rioHost;
+                port = rioPort;
+                username = rioUsername;
+                password = rioPassword != null ? rioPassword : "";
+            }
+            
+            // Create data source for customer-specific database
+            DriverManagerDataSource dataSource = new DriverManagerDataSource();
+            dataSource.setDriverClassName("org.postgresql.Driver");
+            dataSource.setUrl(String.format("jdbc:postgresql://%s:%d/%s", host, port, databaseName));
+            dataSource.setUsername(username);
+            dataSource.setPassword(password);
+            
+            JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+            
+            // Try customer-specific database first, fallback to generic
+            String actualDatabaseName = databaseName;
+            try {
+                jdbc.query("SELECT 1", (rs, rowNum) -> rs.getInt(1));
+            } catch (Exception e) {
+                logger.warn("Cannot connect to customer-specific database {}: {}. Trying generic database as fallback.", databaseName, e.getMessage());
+                String genericDatabaseName = databaseType.equalsIgnoreCase("blackpearl") ? "tapesystem" : "rio_db";
+                try {
+                    dataSource.setUrl(String.format("jdbc:postgresql://%s:%d/%s", host, port, genericDatabaseName));
+                    jdbc = new JdbcTemplate(dataSource);
+                    jdbc.query("SELECT 1", (rs, rowNum) -> rs.getInt(1));
+                    actualDatabaseName = genericDatabaseName;
+                } catch (Exception e2) {
+                    logger.error("Cannot connect to either customer-specific database {} or generic database {}: {}", 
+                        databaseName, genericDatabaseName, e2.getMessage());
+                    return 0L;
+                }
+            }
+            
+            // Query tape count by storage domain
+            // Tapes are linked to storage domains through storage_domain_member
+            try {
+                Long count = jdbc.queryForObject(
+                    "SELECT COUNT(DISTINCT t.id) " +
+                    "FROM ds3.storage_domain sd " +
+                    "JOIN ds3.storage_domain_member sdm ON sdm.storage_domain_id = sd.id " +
+                    "JOIN tape.tape t ON t.storage_domain_member_id = sdm.id " +
+                    "WHERE sd.name ILIKE ?",
+                    Long.class,
+                    storageDomainName
+                );
+                if (count != null && count > 0) {
+                    logger.info("Found {} tapes for storage domain '{}' in database {}", count, storageDomainName, actualDatabaseName);
+                    return count;
+                }
+            } catch (Exception e) {
+                logger.warn("Query tape count failed for storage domain '{}': {}", storageDomainName, e.getMessage());
+            }
+            
+            logger.warn("Could not query tape count for storage domain '{}' in database {}.", storageDomainName, actualDatabaseName);
+            return 0L;
+        } catch (Exception e) {
+            logger.error("Error querying tape count for storage domain '{}': {}", storageDomainName, e.getMessage(), e);
             return 0L;
         }
     }
