@@ -93,11 +93,29 @@ public class ReportService {
         // Determine database type from phase source (default to blackpearl)
         String databaseType = determineDatabaseType(phase.getSource());
         
+        logger.info("Querying progress for phase '{}' (source: '{}', target: '{}') for customer '{}'", 
+            phase.getName(), phase.getSource(), phase.getTarget(), customer.getName());
+        
         // Query PostgreSQL for current object counts from source and target storage domains
         long sourceObjects = queryObjectCountByStorageDomain(customer.getId(), phase.getSource(), databaseType);
         long sourceSize = querySizeByStorageDomain(customer.getId(), phase.getSource(), databaseType);
         long targetObjects = queryObjectCountByStorageDomain(customer.getId(), phase.getTarget(), databaseType);
         long targetSize = querySizeByStorageDomain(customer.getId(), phase.getTarget(), databaseType);
+        
+        // If queries returned 0, fallback to latest migration_data (if available)
+        // This ensures we show something even if PostgreSQL queries fail
+        if (sourceObjects == 0 && targetObjects == 0) {
+            logger.warn("PostgreSQL queries returned 0 for phase '{}'. Falling back to stored migration_data.", phaseId);
+            Optional<MigrationData> latest = dataRepository.findLatestByPhaseId(phaseId);
+            if (latest.isPresent()) {
+                MigrationData last = latest.get();
+                sourceObjects = last.getSourceObjects() != null ? last.getSourceObjects() : 0L;
+                sourceSize = last.getSourceSize() != null ? last.getSourceSize() : 0L;
+                targetObjects = last.getTargetObjects() != null ? last.getTargetObjects() : 0L;
+                targetSize = last.getTargetSize() != null ? last.getTargetSize() : 0L;
+                logger.info("Using stored migration_data: source={} objects, target={} objects", sourceObjects, targetObjects);
+            }
+        }
         
         progress.setSourceObjects(sourceObjects);
         progress.setSourceSize(sourceSize);
@@ -110,6 +128,9 @@ public class ReportService {
             : 0;
         
         progress.setProgress(Math.max(0, Math.min(100, progressPercent)));
+        
+        logger.info("Phase progress calculated: {}% (source: {} objects, target: {} objects)", 
+            progressPercent, sourceObjects, targetObjects);
 
         return progress;
     }
