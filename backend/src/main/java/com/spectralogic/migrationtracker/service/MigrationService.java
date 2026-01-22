@@ -186,39 +186,39 @@ public class MigrationService {
 
             // Query objects by storage domain - try multiple patterns
             // This matches how reporting queries data
+            // Note: storage_domain_member may not have bucket_id, so we use bucket name matching first
             long totalObjects = 0L;
             long totalSize = 0L;
 
-            // Try 1: Join storage_domain -> storage_domain_member -> bucket -> s3_object
+            // Try 1: Direct bucket name matching (most reliable)
+            // Storage domain name might be the bucket name or bucket name prefix
             try {
                 Long count = jdbc.queryForObject(
                     "SELECT COUNT(DISTINCT so.id) " +
-                    "FROM ds3.storage_domain sd " +
-                    "JOIN ds3.storage_domain_member sdm ON sdm.storage_domain_id = sd.id " +
-                    "JOIN ds3.bucket b ON (b.id = sdm.bucket_id OR b.id = sdm.tape_partition_id OR b.id = sdm.pool_partition_id) " +
+                    "FROM ds3.bucket b " +
                     "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
-                    "WHERE sd.name = ?",
+                    "WHERE b.name ILIKE ? OR b.name ILIKE ?",
                     Long.class,
-                    storageDomain
+                    storageDomain,
+                    storageDomain + "%"
                 );
                 Long size = jdbc.queryForObject(
                     "SELECT COALESCE(SUM(bl.length), 0) " +
-                    "FROM ds3.storage_domain sd " +
-                    "JOIN ds3.storage_domain_member sdm ON sdm.storage_domain_id = sd.id " +
-                    "JOIN ds3.bucket b ON (b.id = sdm.bucket_id OR b.id = sdm.tape_partition_id OR b.id = sdm.pool_partition_id) " +
+                    "FROM ds3.bucket b " +
                     "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
                     "LEFT JOIN ds3.blob bl ON bl.object_id = so.id " +
-                    "WHERE sd.name = ?",
+                    "WHERE b.name ILIKE ? OR b.name ILIKE ?",
                     Long.class,
-                    storageDomain
+                    storageDomain,
+                    storageDomain + "%"
                 );
                 if (count != null && size != null) {
                     totalObjects = count;
                     totalSize = size;
-                    logger.info("Successfully queried storage domain '{}' from ds3.storage_domain: {} objects, {} bytes", storageDomain, count, size);
+                    logger.info("Successfully queried storage domain '{}' from bucket name: {} objects, {} bytes", storageDomain, count, size);
                 }
             } catch (Exception e) {
-                logger.debug("Query ds3.storage_domain failed: {}", e.getMessage());
+                logger.debug("Query by bucket name failed: {}", e.getMessage());
                 
                 // Try 2: Direct query on bucket name matching storage domain name
                 // Storage domain name might be the bucket name or bucket name prefix
