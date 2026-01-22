@@ -93,4 +93,10 @@ export const migrationApi = {
       return [];
     }
   },
+
+  deleteDataPoint: async (phaseId: string, date: string): Promise<void> => {
+    await apiClient.delete('/migration/data', {
+      params: { phaseId, date },
+    });
+  },
 };

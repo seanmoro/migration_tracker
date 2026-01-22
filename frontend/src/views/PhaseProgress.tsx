@@ -1,5 +1,5 @@
 import { useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { reportsApi } from '../api/reports';
 import { phasesApi } from '../api/phases';
 import { projectsApi } from '../api/projects';
@@ -9,10 +9,13 @@ import PhaseProgressChart from '../components/PhaseProgressChart';
 import ExportButton from '../components/ExportButton';
 import Breadcrumb from '../components/Breadcrumb';
 import { formatBytes, formatNumber, formatDate } from '../utils/format';
+import { useToastContext } from '../contexts/ToastContext';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 export default function PhaseProgress() {
   const { phaseId } = useParams<{ phaseId: string }>();
+  const queryClient = useQueryClient();
+  const toast = useToastContext();
 
   const { data: phase } = useQuery({
     queryKey: ['phases', phaseId],
@@ -49,6 +52,29 @@ export default function PhaseProgress() {
     queryFn: () => migrationApi.getBucketData(phaseId!),
     enabled: !!phaseId,
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: ({ phaseId, date }: { phaseId: string; date: string }) =>
+      migrationApi.deleteDataPoint(phaseId, date),
+    onSuccess: () => {
+      // Invalidate all related queries to refresh the data
+      queryClient.invalidateQueries({ queryKey: ['reports', 'data', phaseId] });
+      queryClient.invalidateQueries({ queryKey: ['reports', 'progress', phaseId] });
+      queryClient.invalidateQueries({ queryKey: ['reports', 'forecast', phaseId] });
+      queryClient.invalidateQueries({ queryKey: ['bucket-data', phaseId] });
+      queryClient.invalidateQueries({ queryKey: ['phase-data', phaseId] });
+      toast.success('Data point deleted successfully');
+    },
+    onError: (error: any) => {
+      toast.error(`Failed to delete data point: ${error.message}`);
+    },
+  });
+
+  const handleDelete = (date: string) => {
+    if (window.confirm(`Are you sure you want to delete the data point for ${formatDate(date)}?`)) {
+      deleteMutation.mutate({ phaseId: phaseId!, date });
+    }
+  };
 
   if (!phase) {
     return <div>Loading...</div>;
@@ -304,6 +330,7 @@ export default function PhaseProgress() {
                 <th className="text-left py-3 px-4 font-semibold text-gray-700">Target Objects</th>
                 <th className="text-left py-3 px-4 font-semibold text-gray-700">Source Size</th>
                 <th className="text-left py-3 px-4 font-semibold text-gray-700">Type</th>
+                <th className="text-left py-3 px-4 font-semibold text-gray-700">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -323,6 +350,30 @@ export default function PhaseProgress() {
                     >
                       {data.type}
                     </span>
+                  </td>
+                  <td className="py-3 px-4">
+                    {data.type !== 'REFERENCE' && (
+                      <button
+                        onClick={() => handleDelete(data.timestamp)}
+                        disabled={deleteMutation.isPending}
+                        className="text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Delete data point"
+                      >
+                        <svg
+                          className="w-5 h-5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                          />
+                        </svg>
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
