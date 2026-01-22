@@ -100,12 +100,14 @@ public class ReportService {
             phase.getName(), phase.getSource(), phase.getTarget(), customer.getName());
         
         // Get buckets for this phase (from BucketData records) to filter queries
+        // Only include actual bucket names, not storage domain names (which are used for aggregate data)
         List<String> phaseBuckets = bucketDataRepository.findByPhaseId(phaseId).stream()
             .map(bd -> bd.getBucketName())
+            .filter(bucketName -> !bucketName.equals(phase.getSource()) && !bucketName.equals(phase.getTarget()))
             .distinct()
             .collect(java.util.stream.Collectors.toList());
         
-        // If no buckets found in BucketData, query all buckets (backward compatibility)
+        // If no buckets found in BucketData (or only storage domain names), query all buckets (backward compatibility)
         // Otherwise, filter by the buckets that were selected during data gathering
         List<String> bucketsToQuery = phaseBuckets.isEmpty() ? null : phaseBuckets;
         
