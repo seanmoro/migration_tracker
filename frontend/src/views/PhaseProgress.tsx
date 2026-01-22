@@ -267,11 +267,14 @@ export default function PhaseProgress() {
                 <YAxis tickFormatter={(value) => `${value.toFixed(2)} GB`} />
                 <Tooltip 
                   formatter={(value: number, name: string, props: any) => {
-                    // Use original bytes if available for proper formatting
-                    const payload = props.payload;
-                    const bytesKey = `${name}_bytes`;
-                    if (payload && payload[bytesKey] !== undefined) {
-                      return [formatBytes(payload[bytesKey]), name];
+                    // Recharts passes: value, name (bucket name), and props with payload
+                    const payload = props?.payload;
+                    if (payload) {
+                      // Check for bucketName_bytes field
+                      const bytesKey = `${name}_bytes`;
+                      if (payload[bytesKey] !== undefined) {
+                        return [formatBytes(payload[bytesKey]), name];
+                      }
                     }
                     // Fallback: convert GB back to bytes (approximate)
                     const bytes = value * 1024 * 1024 * 1024;

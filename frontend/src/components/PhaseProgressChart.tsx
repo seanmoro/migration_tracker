@@ -54,16 +54,23 @@ export default function PhaseProgressChart({ data }: PhaseProgressChartProps) {
         <YAxis yAxisId="right" orientation="right" tickFormatter={formatYAxisSize} />
         <Tooltip 
           formatter={(value: number, name: string, props: any) => {
-            // Pass original bytes value for size fields
+            // Recharts passes: value, name, and props object with payload property
+            // The payload contains the full data point with all fields
             if (name.includes('Size')) {
-              const payload = props.payload;
-              if (name === 'Source Size (GB)' && payload?.sourceSizeBytes !== undefined) {
-                return formatTooltipValue(value, name, { originalSizeBytes: payload.sourceSizeBytes });
-              } else if (name === 'Target Size (GB)' && payload?.targetSizeBytes !== undefined) {
-                return formatTooltipValue(value, name, { originalSizeBytes: payload.targetSizeBytes });
+              const payload = props?.payload;
+              if (payload) {
+                if (name === 'Source Size' && payload.sourceSizeBytes !== undefined) {
+                  return [formatBytes(payload.sourceSizeBytes), name];
+                } else if (name === 'Target Size' && payload.targetSizeBytes !== undefined) {
+                  return [formatBytes(payload.targetSizeBytes), name];
+                }
+                // Fallback: convert GB value back to bytes (approximate)
+                const bytes = value * 1024 * 1024 * 1024;
+                return [formatBytes(bytes), name];
               }
             }
-            return formatTooltipValue(value, name, null);
+            // For objects, format as number
+            return [value.toLocaleString('en-US', { maximumFractionDigits: 2 }), name];
           }}
         />
         <Legend />
