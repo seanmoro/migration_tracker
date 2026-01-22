@@ -49,29 +49,44 @@ public class ReportService {
 
         if (latest.isPresent()) {
             MigrationData last = latest.get();
-            progress.setSourceObjects(last.getSourceObjects());
-            progress.setTargetObjects(last.getTargetObjects());
-            progress.setSourceSize(last.getSourceSize());
-            progress.setTargetSize(last.getTargetSize());
-
+            
             // Calculate progress
             if (reference.isPresent()) {
-                // Use reference as baseline
+                // Use reference as baseline - this is the correct approach
                 MigrationData ref = reference.get();
-                long totalSource = ref.getSourceObjects();
+                
+                // Set source values from REFERENCE (baseline)
+                progress.setSourceObjects(ref.getSourceObjects());
+                progress.setSourceSize(ref.getSourceSize());
+                
+                // Set target values from LATEST (current state)
+                progress.setTargetObjects(last.getTargetObjects());
+                progress.setTargetSize(last.getTargetSize());
+                
+                // Calculate progress: (target objects migrated) / (total source objects to migrate)
+                // targetDiff = how many objects have been migrated since reference
                 long targetDiff = last.getTargetObjects() - ref.getTargetObjects();
+                long totalSource = ref.getSourceObjects();
                 
                 int progressPercent = totalSource > 0 
                     ? (int) ((targetDiff * 100) / totalSource)
                     : 0;
                 
                 progress.setProgress(Math.max(0, Math.min(100, progressPercent)));
-            } else if (last.getSourceObjects() > 0) {
-                // No reference - calculate based on current target vs source
-                int progressPercent = (int) ((last.getTargetObjects() * 100) / last.getSourceObjects());
-                progress.setProgress(Math.max(0, Math.min(100, progressPercent)));
             } else {
-                progress.setProgress(0);
+                // No reference - use latest data point for both source and target
+                // This is less accurate but the best we can do without a reference
+                progress.setSourceObjects(last.getSourceObjects());
+                progress.setTargetObjects(last.getTargetObjects());
+                progress.setSourceSize(last.getSourceSize());
+                progress.setTargetSize(last.getTargetSize());
+                
+                // Calculate progress based on current target vs source
+                int progressPercent = last.getSourceObjects() > 0 
+                    ? (int) ((last.getTargetObjects() * 100) / last.getSourceObjects())
+                    : 0;
+                
+                progress.setProgress(Math.max(0, Math.min(100, progressPercent)));
             }
         } else {
             // No data points at all
