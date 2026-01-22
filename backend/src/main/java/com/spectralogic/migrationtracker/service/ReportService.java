@@ -270,79 +270,49 @@ public class ReportService {
                     Long.class,
                     params
                 );
-                if (count != null && count > 0) {
+                // Return the result even if it's 0 - this means the query succeeded but found no objects
+                // Only try fallbacks if the query throws an exception
+                if (count != null) {
                     logger.info("Found {} objects on tapes for storage domain '{}' in database {} (pattern 1 - via blob_tape)", count, storageDomainName, actualDatabaseName);
                     return count;
                 }
             } catch (Exception e) {
                 logger.warn("Query pattern 1 (via blob_tape) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
-            }
-            
-            // Pattern 2: Fallback - Storage Domain -> Data Persistence Rule -> Data Policy -> Bucket -> Objects
-            // This counts all objects in buckets linked to the storage domain (not just those on tapes)
-            // Use as fallback if no objects are found on tapes
-            try {
-                Long count = jdbc.queryForObject(
-                    "SELECT COUNT(DISTINCT so.id) " +
-                    "FROM ds3.storage_domain sd " +
-                    "JOIN ds3.data_persistence_rule dpr ON dpr.storage_domain_id = sd.id " +
-                    "JOIN ds3.data_policy dp ON dp.id = dpr.data_policy_id " +
-                    "JOIN ds3.bucket b ON b.data_policy_id = dp.id " +
-                    "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
-                    "WHERE sd.name ILIKE ?",
-                    Long.class,
-                    storageDomainName
-                );
-                if (count != null && count > 0) {
-                    logger.info("Found {} objects in buckets for storage domain '{}' in database {} (pattern 2 - via data_persistence_rule, fallback)", count, storageDomainName, actualDatabaseName);
-                    return count;
-                }
-            } catch (Exception e) {
-                logger.warn("Query pattern 2 (via data_persistence_rule, fallback) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
-            }
-            
-            // Pattern 2: Storage Domain -> Storage Domain Member -> Pool/Tape -> Bucket -> Objects
-            // Fallback pattern: storage_domain -> storage_domain_member -> pool.pool or tape.tape -> bucket -> s3_object
-            try {
-                Long count = jdbc.queryForObject(
-                    "SELECT COUNT(DISTINCT so.id) " +
-                    "FROM ds3.storage_domain sd " +
-                    "JOIN ds3.storage_domain_member sdm ON sdm.storage_domain_id = sd.id " +
-                    "LEFT JOIN pool.pool p ON p.storage_domain_member_id = sdm.id " +
-                    "LEFT JOIN tape.tape t ON t.storage_domain_member_id = sdm.id " +
-                    "LEFT JOIN ds3.bucket b ON (b.id = p.bucket_id OR b.id = t.bucket_id) " +
-                    "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
-                    "WHERE sd.name ILIKE ? AND b.id IS NOT NULL",
-                    Long.class,
-                    storageDomainName
-                );
-                if (count != null && count > 0) {
-                    logger.info("Found {} objects for storage domain '{}' in database {} (pattern 2 - via pool/tape)", count, storageDomainName, actualDatabaseName);
-                    return count;
-                }
-            } catch (Exception e) {
-                logger.warn("Query pattern 2 (via pool/tape) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
-            }
-            
-            // Pattern 3: Fallback - Direct bucket name matching (in case storage domain name matches bucket name)
-            // Only use this if no buckets are specified (backward compatibility)
-            if (bucketsToQuery == null || bucketsToQuery.isEmpty()) {
+                // Only try fallbacks if pattern 1 throws an exception
+                // Pattern 2: Fallback - Storage Domain -> Data Persistence Rule -> Data Policy -> Bucket -> Objects
+                // This counts all objects in buckets linked to the storage domain (not just those on tapes)
                 try {
+                    String fallbackBucketFilter = "";
+                    Object[] fallbackParams;
+                    if (bucketsToQuery != null && !bucketsToQuery.isEmpty()) {
+                        String placeholders = java.util.stream.IntStream.range(0, bucketsToQuery.size())
+                            .mapToObj(i -> "?")
+                            .collect(java.util.stream.Collectors.joining(","));
+                        fallbackBucketFilter = " AND b.name IN (" + placeholders + ")";
+                        fallbackParams = new Object[bucketsToQuery.size() + 1];
+                        fallbackParams[0] = storageDomainName;
+                        System.arraycopy(bucketsToQuery.toArray(), 0, fallbackParams, 1, bucketsToQuery.size());
+                    } else {
+                        fallbackParams = new Object[]{storageDomainName};
+                    }
+                    
                     Long count = jdbc.queryForObject(
                         "SELECT COUNT(DISTINCT so.id) " +
-                        "FROM ds3.bucket b " +
+                        "FROM ds3.storage_domain sd " +
+                        "JOIN ds3.data_persistence_rule dpr ON dpr.storage_domain_id = sd.id " +
+                        "JOIN ds3.data_policy dp ON dp.id = dpr.data_policy_id " +
+                        "JOIN ds3.bucket b ON b.data_policy_id = dp.id " +
                         "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
-                        "WHERE b.name ILIKE ? OR b.name ILIKE ?",
+                        "WHERE sd.name ILIKE ?" + fallbackBucketFilter,
                         Long.class,
-                        storageDomainName,
-                        storageDomainName + "%"
+                        fallbackParams
                     );
-                    if (count != null && count > 0) {
-                        logger.info("Found {} objects for storage domain '{}' in database {} (pattern 3 - bucket name)", count, storageDomainName, actualDatabaseName);
+                    if (count != null) {
+                        logger.info("Found {} objects in buckets for storage domain '{}' in database {} (pattern 2 - via data_persistence_rule, fallback)", count, storageDomainName, actualDatabaseName);
                         return count;
                     }
-                } catch (Exception e) {
-                    logger.warn("Query pattern 3 (bucket name) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
+                } catch (Exception e2) {
+                    logger.warn("Query pattern 2 (via data_persistence_rule, fallback) failed for storage domain '{}': {}", storageDomainName, e2.getMessage());
                 }
             }
             
@@ -445,82 +415,49 @@ public class ReportService {
                     Long.class,
                     params
                 );
-                if (size != null && size > 0) {
+                // Return the result even if it's 0 - this means the query succeeded but found no objects
+                // Only try fallbacks if the query throws an exception
+                if (size != null) {
                     logger.info("Found {} bytes on tapes for storage domain '{}' in database {} (pattern 1 - via blob_tape)", size, storageDomainName, actualDatabaseName);
                     return size;
                 }
             } catch (Exception e) {
                 logger.warn("Query pattern 1 (via blob_tape) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
-            }
-            
-            // Pattern 2: Fallback - Storage Domain -> Data Persistence Rule -> Data Policy -> Bucket -> Objects
-            // This counts all objects in buckets linked to the storage domain (not just those on tapes)
-            // Use as fallback if no objects are found on tapes
-            try {
-                Long size = jdbc.queryForObject(
-                    "SELECT COALESCE(SUM(bl.length), 0) " +
-                    "FROM ds3.storage_domain sd " +
-                    "JOIN ds3.data_persistence_rule dpr ON dpr.storage_domain_id = sd.id " +
-                    "JOIN ds3.data_policy dp ON dp.id = dpr.data_policy_id " +
-                    "JOIN ds3.bucket b ON b.data_policy_id = dp.id " +
-                    "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
-                    "LEFT JOIN ds3.blob bl ON bl.object_id = so.id " +
-                    "WHERE sd.name ILIKE ?",
-                    Long.class,
-                    storageDomainName
-                );
-                if (size != null && size > 0) {
-                    logger.info("Found {} bytes in buckets for storage domain '{}' in database {} (pattern 2 - via data_persistence_rule, fallback)", size, storageDomainName, actualDatabaseName);
-                    return size;
-                }
-            } catch (Exception e) {
-                logger.warn("Query pattern 2 (via data_persistence_rule, fallback) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
-            }
-            
-            // Pattern 2: Storage Domain -> Storage Domain Member -> Pool/Tape -> Bucket -> Objects
-            // Fallback pattern: storage_domain -> storage_domain_member -> pool.pool or tape.tape -> bucket -> s3_object
-            try {
-                Long size = jdbc.queryForObject(
-                    "SELECT COALESCE(SUM(bl.length), 0) " +
-                    "FROM ds3.storage_domain sd " +
-                    "JOIN ds3.storage_domain_member sdm ON sdm.storage_domain_id = sd.id " +
-                    "LEFT JOIN pool.pool p ON p.storage_domain_member_id = sdm.id " +
-                    "LEFT JOIN tape.tape t ON t.storage_domain_member_id = sdm.id " +
-                    "LEFT JOIN ds3.bucket b ON (b.id = p.bucket_id OR b.id = t.bucket_id) " +
-                    "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
-                    "LEFT JOIN ds3.blob bl ON bl.object_id = so.id " +
-                    "WHERE sd.name ILIKE ? AND b.id IS NOT NULL",
-                    Long.class,
-                    storageDomainName
-                );
-                if (size != null && size > 0) {
-                    logger.info("Found {} bytes for storage domain '{}' in database {} (pattern 2 - via pool/tape)", size, storageDomainName, actualDatabaseName);
-                    return size;
-                }
-            } catch (Exception e) {
-                logger.warn("Query pattern 2 (via pool/tape) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
-            }
-            
-            // Pattern 3: Fallback - Direct bucket name matching
-            // Only use this if no buckets are specified (backward compatibility)
-            if (bucketsToQuery == null || bucketsToQuery.isEmpty()) {
+                // Only try fallbacks if pattern 1 throws an exception
+                // Pattern 2: Fallback - Storage Domain -> Data Persistence Rule -> Data Policy -> Bucket -> Objects
                 try {
+                    String fallbackBucketFilter = "";
+                    Object[] fallbackParams;
+                    if (bucketsToQuery != null && !bucketsToQuery.isEmpty()) {
+                        String placeholders = java.util.stream.IntStream.range(0, bucketsToQuery.size())
+                            .mapToObj(i -> "?")
+                            .collect(java.util.stream.Collectors.joining(","));
+                        fallbackBucketFilter = " AND b.name IN (" + placeholders + ")";
+                        fallbackParams = new Object[bucketsToQuery.size() + 1];
+                        fallbackParams[0] = storageDomainName;
+                        System.arraycopy(bucketsToQuery.toArray(), 0, fallbackParams, 1, bucketsToQuery.size());
+                    } else {
+                        fallbackParams = new Object[]{storageDomainName};
+                    }
+                    
                     Long size = jdbc.queryForObject(
                         "SELECT COALESCE(SUM(bl.length), 0) " +
-                        "FROM ds3.bucket b " +
+                        "FROM ds3.storage_domain sd " +
+                        "JOIN ds3.data_persistence_rule dpr ON dpr.storage_domain_id = sd.id " +
+                        "JOIN ds3.data_policy dp ON dp.id = dpr.data_policy_id " +
+                        "JOIN ds3.bucket b ON b.data_policy_id = dp.id " +
                         "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
                         "LEFT JOIN ds3.blob bl ON bl.object_id = so.id " +
-                        "WHERE b.name ILIKE ? OR b.name ILIKE ?",
+                        "WHERE sd.name ILIKE ?" + fallbackBucketFilter,
                         Long.class,
-                        storageDomainName,
-                        storageDomainName + "%"
+                        fallbackParams
                     );
-                    if (size != null && size > 0) {
-                        logger.info("Found {} bytes for storage domain '{}' in database {} (pattern 3 - bucket name)", size, storageDomainName, actualDatabaseName);
+                    if (size != null) {
+                        logger.info("Found {} bytes in buckets for storage domain '{}' in database {} (pattern 2 - via data_persistence_rule, fallback)", size, storageDomainName, actualDatabaseName);
                         return size;
                     }
-                } catch (Exception e) {
-                    logger.warn("Query pattern 3 (bucket name) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
+                } catch (Exception e2) {
+                    logger.warn("Query pattern 2 (via data_persistence_rule, fallback) failed for storage domain '{}': {}", storageDomainName, e2.getMessage());
                 }
             }
             
