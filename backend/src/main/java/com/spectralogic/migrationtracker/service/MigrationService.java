@@ -186,92 +186,120 @@ public class MigrationService {
                 }
             }
 
-            // Query buckets - try multiple patterns
+            // Query objects by storage domain - try multiple patterns
+            // This matches how reporting queries data
             List<Map<String, Object>> results = new ArrayList<>();
+            long totalObjects = 0L;
+            long totalSize = 0L;
 
-            // Try 1: ds3.bucket with ds3.s3_object and ds3.blob (most accurate)
+            // Try 1: Join storage_domain -> storage_domain_member -> bucket -> s3_object
             try {
-                String bucketFilter = "";
-                if (selectedBuckets != null && !selectedBuckets.isEmpty()) {
-                    String bucketList = String.join("','", selectedBuckets);
-                    bucketFilter = " AND b.name IN ('" + bucketList + "')";
-                }
-                results = jdbc.query(
-                    "SELECT b.name, COUNT(DISTINCT so.id) as object_count, COALESCE(SUM(bl.length), 0) as size_bytes " +
-                    "FROM ds3.bucket b " +
-                    "LEFT JOIN ds3.s3_object so ON so.bucket_id = b.id " +
-                    "LEFT JOIN ds3.blob bl ON bl.object_id = so.id " +
-                    "WHERE 1=1" + bucketFilter +
-                    " GROUP BY b.name ORDER BY b.name",
-                    (rs, rowNum) -> {
-                        Map<String, Object> row = new HashMap<>();
-                        row.put("name", rs.getString("name"));
-                        row.put("objectCount", rs.getLong("object_count"));
-                        row.put("sizeBytes", rs.getLong("size_bytes"));
-                        return row;
-                    }
+                Long count = jdbc.queryForObject(
+                    "SELECT COUNT(DISTINCT so.id) " +
+                    "FROM ds3.storage_domain sd " +
+                    "JOIN ds3.storage_domain_member sdm ON sdm.storage_domain_id = sd.id " +
+                    "JOIN ds3.bucket b ON (b.id = sdm.bucket_id OR b.id = sdm.tape_partition_id OR b.id = sdm.pool_partition_id) " +
+                    "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
+                    "WHERE sd.name = ?",
+                    Long.class,
+                    storageDomain
                 );
-                logger.info("Successfully queried buckets from ds3.bucket: {} buckets found", results.size());
+                Long size = jdbc.queryForObject(
+                    "SELECT COALESCE(SUM(bl.length), 0) " +
+                    "FROM ds3.storage_domain sd " +
+                    "JOIN ds3.storage_domain_member sdm ON sdm.storage_domain_id = sd.id " +
+                    "JOIN ds3.bucket b ON (b.id = sdm.bucket_id OR b.id = sdm.tape_partition_id OR b.id = sdm.pool_partition_id) " +
+                    "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
+                    "LEFT JOIN ds3.blob bl ON bl.object_id = so.id " +
+                    "WHERE sd.name = ?",
+                    Long.class,
+                    storageDomain
+                );
+                if (count != null && size != null) {
+                    totalObjects = count;
+                    totalSize = size;
+                    logger.info("Successfully queried storage domain '{}' from ds3.storage_domain: {} objects, {} bytes", storageDomain, count, size);
+                }
             } catch (Exception e) {
-                logger.debug("Query ds3.bucket failed: {}", e.getMessage());
+                logger.debug("Query ds3.storage_domain failed: {}", e.getMessage());
                 
-                // Try 2: Direct buckets table
+                // Try 2: Direct query on bucket name matching storage domain name
+                // Storage domain name might be the bucket name or bucket name prefix
                 try {
-                    String bucketFilter = "";
-                    if (selectedBuckets != null && !selectedBuckets.isEmpty()) {
-                        String bucketList = String.join("','", selectedBuckets);
-                        bucketFilter = " AND name IN ('" + bucketList + "')";
-                    }
-                    results = jdbc.query(
-                        "SELECT name, COALESCE(object_count, 0) as object_count, COALESCE(size_bytes, 0) as size_bytes " +
-                        "FROM buckets WHERE 1=1" + bucketFilter + " ORDER BY name",
-                        (rs, rowNum) -> {
-                            Map<String, Object> row = new HashMap<>();
-                            row.put("name", rs.getString("name"));
-                            row.put("objectCount", rs.getLong("object_count"));
-                            row.put("sizeBytes", rs.getLong("size_bytes"));
-                            return row;
-                        }
+                    Long count = jdbc.queryForObject(
+                        "SELECT COUNT(DISTINCT so.id) " +
+                        "FROM ds3.bucket b " +
+                        "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
+                        "WHERE b.name = ? OR b.name LIKE ?",
+                        Long.class,
+                        storageDomain,
+                        storageDomain + "%"
                     );
-                    logger.info("Successfully queried buckets from 'buckets' table: {} buckets found", results.size());
+                    Long size = jdbc.queryForObject(
+                        "SELECT COALESCE(SUM(bl.length), 0) " +
+                        "FROM ds3.bucket b " +
+                        "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
+                        "LEFT JOIN ds3.blob bl ON bl.object_id = so.id " +
+                        "WHERE b.name = ? OR b.name LIKE ?",
+                        Long.class,
+                        storageDomain,
+                        storageDomain + "%"
+                    );
+                    if (count != null && size != null) {
+                        totalObjects = count;
+                        totalSize = size;
+                        logger.info("Successfully queried storage domain '{}' from bucket name: {} objects, {} bytes", storageDomain, count, size);
+                    }
                 } catch (Exception e2) {
-                    logger.debug("Query buckets table failed: {}", e2.getMessage());
+                    logger.debug("Query by bucket name failed: {}", e2.getMessage());
                     
-                    // Try 3: Aggregate from objects table
+                    // Try 3: Query by storage domain name directly (if it's stored as a column in bucket)
                     try {
-                        String bucketFilter = "";
-                        if (selectedBuckets != null && !selectedBuckets.isEmpty()) {
-                            String bucketList = String.join("','", selectedBuckets);
-                            bucketFilter = " AND bucket_name IN ('" + bucketList + "')";
-                        }
-                        results = jdbc.query(
-                            "SELECT bucket_name as name, COUNT(*) as object_count, SUM(size) as size_bytes " +
-                            "FROM objects WHERE 1=1" + bucketFilter + " GROUP BY bucket_name ORDER BY bucket_name",
-                            (rs, rowNum) -> {
-                                Map<String, Object> row = new HashMap<>();
-                                row.put("name", rs.getString("name"));
-                                row.put("objectCount", rs.getLong("object_count"));
-                                row.put("sizeBytes", rs.getLong("size_bytes"));
-                                return row;
-                            }
+                        Long count = jdbc.queryForObject(
+                            "SELECT COUNT(DISTINCT so.id) " +
+                            "FROM ds3.bucket b " +
+                            "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
+                            "WHERE b.storage_domain = ? OR b.storage_domain_name = ?",
+                            Long.class,
+                            storageDomain,
+                            storageDomain
                         );
-                        logger.info("Successfully queried buckets from 'objects' table: {} buckets found", results.size());
+                        Long size = jdbc.queryForObject(
+                            "SELECT COALESCE(SUM(bl.length), 0) " +
+                            "FROM ds3.bucket b " +
+                            "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
+                            "LEFT JOIN ds3.blob bl ON bl.object_id = so.id " +
+                            "WHERE b.storage_domain = ? OR b.storage_domain_name = ?",
+                            Long.class,
+                            storageDomain,
+                            storageDomain
+                        );
+                        if (count != null && size != null) {
+                            totalObjects = count;
+                            totalSize = size;
+                            logger.info("Successfully queried storage domain '{}' from bucket column: {} objects, {} bytes", storageDomain, count, size);
+                        }
                     } catch (Exception e3) {
-                        logger.error("All bucket query patterns failed for {}: {}", context, e3.getMessage());
+                        logger.warn("All storage domain query patterns failed for {}: {}", context, e3.getMessage());
                     }
                 }
             }
 
-            // Store per-bucket data
-            for (Map<String, Object> row : results) {
+            // If we got totals, create a single aggregate bucket data entry
+            // Note: We're not storing per-bucket data anymore, just aggregate by storage domain
+            // This matches how reporting works - query by storage domain, not by individual buckets
+            if (totalObjects > 0 || totalSize > 0) {
                 BucketData bucketData = new BucketData();
                 bucketData.setMigrationPhaseId(phaseId);
                 bucketData.setTimestamp(date);
-                bucketData.setBucketName((String) row.get("name"));
+                bucketData.setBucketName(storageDomain); // Use storage domain name as bucket name
                 bucketData.setSource(databaseType.toLowerCase());
-                bucketData.setObjectCount((Long) row.get("objectCount"));
-                bucketData.setSizeBytes((Long) row.get("sizeBytes"));
+                bucketData.setObjectCount(totalObjects);
+                bucketData.setSizeBytes(totalSize);
                 bucketDataList.add(bucketDataRepository.save(bucketData));
+                logger.info("Stored aggregate data for storage domain '{}' ({}): {} objects, {} bytes", storageDomain, context, totalObjects, totalSize);
+            } else {
+                logger.warn("No objects found for storage domain '{}' ({})", storageDomain, context);
             }
 
             logger.info("Stored {} bucket data points for phase {} ({})", bucketDataList.size(), phaseId, context);
