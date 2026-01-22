@@ -81,6 +81,14 @@ public class BucketDataRepository {
             data.setMigrationPhaseId(rs.getString("migration_phase_id"));
             data.setBucketName(rs.getString("bucket_name"));
             data.setSource(rs.getString("source"));
+            // Handle storage_domain column (may not exist in older databases)
+            try {
+                String storageDomain = rs.getString("storage_domain");
+                data.setStorageDomain(storageDomain);
+            } catch (Exception e) {
+                // Column doesn't exist, ignore
+                data.setStorageDomain(null);
+            }
             data.setObjectCount(rs.getLong("object_count"));
             data.setSizeBytes(rs.getLong("size_bytes"));
             data.setUserId(rs.getString("user_id"));
