@@ -33,6 +33,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class ReportService {
@@ -69,6 +70,29 @@ public class ReportService {
 
     @Value("${postgres.rio.password:}")
     private String rioPassword;
+
+    // Cache for database existence checks (to avoid repeated connection attempts)
+    private final Map<String, Boolean> databaseExistsCache = new ConcurrentHashMap<>();
+    private final Map<String, Long> databaseCacheTimestamps = new ConcurrentHashMap<>();
+    private static final long DATABASE_CACHE_TTL_MS = 300_000; // 5 minutes
+
+    // Cache for query results (to avoid repeated expensive queries)
+    private final Map<String, CachedQueryResult> queryResultCache = new ConcurrentHashMap<>();
+    private static final long QUERY_CACHE_TTL_MS = 60_000; // 1 minute
+    
+    private static class CachedQueryResult {
+        final Long value;
+        final long timestamp;
+        
+        CachedQueryResult(Long value) {
+            this.value = value;
+            this.timestamp = System.currentTimeMillis();
+        }
+        
+        boolean isExpired(long ttl) {
+            return System.currentTimeMillis() - timestamp > ttl;
+        }
+    }
 
     public ReportService(PhaseRepository phaseRepository, MigrationDataRepository dataRepository,
                          ProjectService projectService, CustomerService customerService,
@@ -296,7 +320,7 @@ public class ReportService {
                         fallbackParams = new Object[]{storageDomainName};
                     }
                     
-                    Long count = jdbc.queryForObject(
+                    Long fallbackCount = jdbc.queryForObject(
                         "SELECT COUNT(DISTINCT so.id) " +
                         "FROM ds3.storage_domain sd " +
                         "JOIN ds3.data_persistence_rule dpr ON dpr.storage_domain_id = sd.id " +
@@ -307,9 +331,9 @@ public class ReportService {
                         Long.class,
                         fallbackParams
                     );
-                    if (count != null) {
-                        logger.info("Found {} objects in buckets for storage domain '{}' in database {} (pattern 2 - via data_persistence_rule, fallback)", count, storageDomainName, actualDatabaseName);
-                        return count;
+                    if (fallbackCount != null) {
+                        logger.info("Found {} objects in buckets for storage domain '{}' in database {} (pattern 2 - via data_persistence_rule, fallback)", fallbackCount, storageDomainName, actualDatabaseName);
+                        return fallbackCount;
                     }
                 } catch (Exception e2) {
                     logger.warn("Query pattern 2 (via data_persistence_rule, fallback) failed for storage domain '{}': {}", storageDomainName, e2.getMessage());
