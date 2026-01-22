@@ -108,18 +108,16 @@ public class ReportService {
         // Get reference point (baseline) - either REFERENCE type or first DATA point
         Optional<MigrationData> reference = dataRepository.findReferenceByPhaseId(phaseId);
         Optional<MigrationData> latest = dataRepository.findLatestByPhaseId(phaseId);
+        List<MigrationData> allData = dataRepository.findByPhaseId(phaseId);
         
         // If no reference point, use first data point as baseline
-        if (reference.isEmpty()) {
-            List<MigrationData> allData = dataRepository.findByPhaseId(phaseId);
-            if (!allData.isEmpty()) {
-                // Data is ordered DESC by timestamp, so last item is oldest (first data point)
-                // Use first data point (oldest) as baseline
-                MigrationData firstData = allData.get(allData.size() - 1);
-                reference = Optional.of(firstData);
-                logger.info("No REFERENCE point found for phase '{}', using first DATA point (timestamp: {}) as baseline", 
-                    phaseId, firstData.getTimestamp());
-            }
+        if (reference.isEmpty() && !allData.isEmpty()) {
+            // Data is ordered DESC by timestamp, so last item is oldest (first data point)
+            // Use first data point (oldest) as baseline
+            MigrationData firstData = allData.get(allData.size() - 1);
+            reference = Optional.of(firstData);
+            logger.info("No REFERENCE point found for phase '{}', using first DATA point (timestamp: {}) as baseline", 
+                phaseId, firstData.getTimestamp());
         }
         
         long sourceObjects = 0L;
@@ -134,16 +132,39 @@ public class ReportService {
             MigrationData ref = reference.get();
             MigrationData last = latest.get();
             
+            // Check if reference and latest are the same data point (only one data point exists)
+            boolean isSameDataPoint = ref.getId().equals(last.getId());
+            
             // Source should be from baseline (reference point)
             sourceObjects = ref.getSourceObjects() != null ? ref.getSourceObjects() : 0L;
             sourceSize = ref.getSourceSize() != null ? ref.getSourceSize() : 0L;
             
-            // Target should be from latest data point (current state)
-            targetObjects = last.getTargetObjects() != null ? last.getTargetObjects() : 0L;
-            targetSize = last.getTargetSize() != null ? last.getTargetSize() : 0L;
+            if (isSameDataPoint) {
+                // Only one data point exists - use baseline target as 0 for progress calculation
+                // This assumes migration hasn't started yet, so target should be 0
+                // But we still show the actual target value from the data point for display
+                targetObjects = last.getTargetObjects() != null ? last.getTargetObjects() : 0L;
+                targetSize = last.getTargetSize() != null ? last.getTargetSize() : 0L;
+                
+                // For progress calculation, if target equals source in the first data point,
+                // it might mean the migration is complete OR the data is wrong
+                // We'll calculate progress normally but log a warning
+                if (targetObjects == sourceObjects && sourceObjects > 0) {
+                    logger.warn("Only one data point exists for phase '{}' and target ({}) equals source ({}). " +
+                        "This might indicate: 1) Migration is complete, 2) Migration hasn't started (target should be 0), " +
+                        "or 3) Data gathering issue. Progress will show 100% but may be incorrect.", 
+                        phaseId, targetObjects, sourceObjects);
+                }
+            } else {
+                // Multiple data points exist - use latest for target (current state)
+                targetObjects = last.getTargetObjects() != null ? last.getTargetObjects() : 0L;
+                targetSize = last.getTargetSize() != null ? last.getTargetSize() : 0L;
+            }
             
-            logger.info("Using baseline (reference) for source: {} objects ({} bytes)", sourceObjects, sourceSize);
-            logger.info("Using latest data point for target: {} objects ({} bytes)", targetObjects, targetSize);
+            logger.info("Using baseline (reference, timestamp: {}) for source: {} objects ({} bytes)", 
+                ref.getTimestamp(), sourceObjects, sourceSize);
+            logger.info("Using latest data point (timestamp: {}) for target: {} objects ({} bytes)", 
+                last.getTimestamp(), targetObjects, targetSize);
         } else if (latest.isPresent()) {
             // Fallback: if no reference, use latest for both (not ideal but better than 0)
             MigrationData last = latest.get();
@@ -169,11 +190,20 @@ public class ReportService {
         
         // Calculate progress: (current target objects) / (baseline source objects) * 100
         // This shows how much of the original source has been migrated to the target
+        // NOTE: This assumes target storage domain only contains migrated objects.
+        // If target already had objects before migration started, progress will be incorrect.
+        // For accurate progress, we'd need to track: (target - baseline_target) / (source - baseline_source)
         int progressPercent = sourceObjects > 0 
             ? (int) ((targetObjects * 100) / sourceObjects)
             : 0;
         
-        progress.setProgress(Math.max(0, Math.min(100, progressPercent)));
+        // Cap at 100% - if target exceeds source, it might mean:
+        // 1. Migration is complete and target has more objects (duplicates, etc.)
+        // 2. Target storage domain had pre-existing objects
+        // 3. Data gathering issue
+        progressPercent = Math.max(0, Math.min(100, progressPercent));
+        
+        progress.setProgress(progressPercent);
         
         logger.info("Phase progress calculated: {}% (baseline source: {} objects, current target: {} objects)", 
             progressPercent, sourceObjects, targetObjects);
