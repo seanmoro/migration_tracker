@@ -726,13 +726,17 @@ public class ReportService {
             document.addPage(page);
             
             org.apache.pdfbox.pdmodel.PDPageContentStream contentStream = new org.apache.pdfbox.pdmodel.PDPageContentStream(document, page);
-            contentStream.setFont(org.apache.pdfbox.pdmodel.font.PDType1Font.HELVETICA_BOLD, 16);
+            // In PDFBox 3.0, use Standard14Fonts to get fonts
+            org.apache.pdfbox.pdmodel.font.Standard14Fonts fonts = org.apache.pdfbox.pdmodel.font.Standard14Fonts.getInstance();
+            org.apache.pdfbox.pdmodel.font.PDType1Font boldFont = fonts.getHelveticaBold();
+            org.apache.pdfbox.pdmodel.font.PDType1Font regularFont = fonts.getHelvetica();
+            contentStream.setFont(boldFont, 16);
             contentStream.beginText();
             contentStream.newLineAtOffset(50, 750);
             contentStream.showText("Phase Report: " + phase.getName());
             contentStream.endText();
             
-            contentStream.setFont(org.apache.pdfbox.pdmodel.font.PDType1Font.HELVETICA, 12);
+            contentStream.setFont(regularFont, 12);
             float y = 720;
             contentStream.beginText();
             contentStream.newLineAtOffset(50, y);
@@ -767,13 +771,13 @@ public class ReportService {
             
             if (options.getIncludeForecast() != null && options.getIncludeForecast()) {
                 y -= 30;
-                contentStream.setFont(org.apache.pdfbox.pdmodel.font.PDType1Font.HELVETICA_BOLD, 14);
+                contentStream.setFont(boldFont, 14);
                 contentStream.beginText();
                 contentStream.newLineAtOffset(50, y);
                 contentStream.showText("Forecast");
                 contentStream.endText();
                 
-                contentStream.setFont(org.apache.pdfbox.pdmodel.font.PDType1Font.HELVETICA, 12);
+                contentStream.setFont(regularFont, 12);
                 y -= 20;
                 contentStream.beginText();
                 contentStream.newLineAtOffset(50, y);
