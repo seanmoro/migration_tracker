@@ -101,9 +101,20 @@ public class ReportService {
         
         // Get buckets for this phase (from BucketData records) to filter queries
         // Only include actual bucket names, not storage domain names (which are used for aggregate data)
-        List<String> phaseBuckets = bucketDataRepository.findByPhaseId(phaseId).stream()
+        List<com.spectralogic.migrationtracker.model.BucketData> allBucketData = bucketDataRepository.findByPhaseId(phaseId);
+        logger.debug("Found {} BucketData records for phase '{}'", allBucketData.size(), phaseId);
+        
+        List<String> phaseBuckets = allBucketData.stream()
             .map(bd -> bd.getBucketName())
-            .filter(bucketName -> !bucketName.equals(phase.getSource()) && !bucketName.equals(phase.getTarget()))
+            .filter(bucketName -> {
+                boolean isNotSource = !bucketName.equals(phase.getSource());
+                boolean isNotTarget = !bucketName.equals(phase.getTarget());
+                if (!isNotSource || !isNotTarget) {
+                    logger.debug("Filtering out bucket name '{}' (matches source '{}' or target '{}')", 
+                        bucketName, phase.getSource(), phase.getTarget());
+                }
+                return isNotSource && isNotTarget;
+            })
             .distinct()
             .collect(java.util.stream.Collectors.toList());
         
@@ -111,8 +122,8 @@ public class ReportService {
         // Otherwise, filter by the buckets that were selected during data gathering
         List<String> bucketsToQuery = phaseBuckets.isEmpty() ? null : phaseBuckets;
         
-        logger.info("Phase '{}' has {} buckets to filter: {}", phaseId, 
-            bucketsToQuery != null ? bucketsToQuery.size() : 0, bucketsToQuery);
+        logger.info("Phase '{}' has {} buckets to filter (from {} BucketData records): {}", 
+            phaseId, bucketsToQuery != null ? bucketsToQuery.size() : 0, allBucketData.size(), bucketsToQuery);
         
         // Query PostgreSQL for current object counts, sizes, and tape counts from source and target storage domains
         long sourceObjects = queryObjectCountByStorageDomain(customer.getId(), phase.getSource(), databaseType, bucketsToQuery);
@@ -314,61 +325,25 @@ public class ReportService {
             }
             
             // Pattern 3: Fallback - Direct bucket name matching (in case storage domain name matches bucket name)
-            try {
-                Long count = jdbc.queryForObject(
-                    "SELECT COUNT(DISTINCT so.id) " +
-                    "FROM ds3.bucket b " +
-                    "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
-                    "WHERE b.name ILIKE ? OR b.name ILIKE ?",
-                    Long.class,
-                    storageDomainName,
-                    storageDomainName + "%"
-                );
-                if (count != null && count > 0) {
-                    logger.info("Found {} objects for storage domain '{}' in database {} (pattern 3 - bucket name)", count, storageDomainName, actualDatabaseName);
-                    return count;
+            // Only use this if no buckets are specified (backward compatibility)
+            if (bucketsToQuery == null || bucketsToQuery.isEmpty()) {
+                try {
+                    Long count = jdbc.queryForObject(
+                        "SELECT COUNT(DISTINCT so.id) " +
+                        "FROM ds3.bucket b " +
+                        "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
+                        "WHERE b.name ILIKE ? OR b.name ILIKE ?",
+                        Long.class,
+                        storageDomainName,
+                        storageDomainName + "%"
+                    );
+                    if (count != null && count > 0) {
+                        logger.info("Found {} objects for storage domain '{}' in database {} (pattern 3 - bucket name)", count, storageDomainName, actualDatabaseName);
+                        return count;
+                    }
+                } catch (Exception e) {
+                    logger.warn("Query pattern 3 (bucket name) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
                 }
-            } catch (Exception e) {
-                logger.warn("Query pattern 3 (bucket name) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
-            }
-            
-            // Pattern 3: Query by storage domain name directly (if it's stored as a column in bucket)
-            try {
-                Long count = jdbc.queryForObject(
-                    "SELECT COUNT(DISTINCT so.id) " +
-                    "FROM ds3.bucket b " +
-                    "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
-                    "WHERE b.storage_domain ILIKE ? OR b.storage_domain_name ILIKE ?",
-                    Long.class,
-                    storageDomainName,
-                    storageDomainName
-                );
-                if (count != null && count > 0) {
-                    logger.info("Found {} objects for storage domain '{}' in database {} (pattern 3)", count, storageDomainName, actualDatabaseName);
-                    return count;
-                }
-            } catch (Exception e) {
-                logger.warn("Query pattern 3 failed for storage domain '{}': {}", storageDomainName, e.getMessage());
-            }
-            
-            // Pattern 4: Fallback - try exact match (case-sensitive) as last resort
-            try {
-                Long count = jdbc.queryForObject(
-                    "SELECT COUNT(DISTINCT so.id) " +
-                    "FROM ds3.storage_domain sd " +
-                    "JOIN ds3.storage_domain_member sdm ON sdm.storage_domain_id = sd.id " +
-                    "JOIN ds3.bucket b ON (b.id = sdm.bucket_id OR b.id = sdm.tape_partition_id OR b.id = sdm.pool_partition_id) " +
-                    "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
-                    "WHERE sd.name = ?",
-                    Long.class,
-                    storageDomainName
-                );
-                if (count != null && count > 0) {
-                    logger.info("Found {} objects for storage domain '{}' in database {} (pattern 4 - exact match)", count, storageDomainName, actualDatabaseName);
-                    return count;
-                }
-            } catch (Exception e) {
-                logger.warn("Query pattern 4 (exact match) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
             }
             
             logger.error("Could not query object count for storage domain '{}' in database {}. All query patterns failed.", storageDomainName, actualDatabaseName);
@@ -527,64 +502,26 @@ public class ReportService {
             }
             
             // Pattern 3: Fallback - Direct bucket name matching
-            try {
-                Long size = jdbc.queryForObject(
-                    "SELECT COALESCE(SUM(bl.length), 0) " +
-                    "FROM ds3.bucket b " +
-                    "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
-                    "LEFT JOIN ds3.blob bl ON bl.object_id = so.id " +
-                    "WHERE b.name ILIKE ? OR b.name ILIKE ?",
-                    Long.class,
-                    storageDomainName,
-                    storageDomainName + "%"
-                );
-                if (size != null && size > 0) {
-                    logger.info("Found {} bytes for storage domain '{}' in database {} (pattern 3 - bucket name)", size, storageDomainName, actualDatabaseName);
-                    return size;
+            // Only use this if no buckets are specified (backward compatibility)
+            if (bucketsToQuery == null || bucketsToQuery.isEmpty()) {
+                try {
+                    Long size = jdbc.queryForObject(
+                        "SELECT COALESCE(SUM(bl.length), 0) " +
+                        "FROM ds3.bucket b " +
+                        "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
+                        "LEFT JOIN ds3.blob bl ON bl.object_id = so.id " +
+                        "WHERE b.name ILIKE ? OR b.name ILIKE ?",
+                        Long.class,
+                        storageDomainName,
+                        storageDomainName + "%"
+                    );
+                    if (size != null && size > 0) {
+                        logger.info("Found {} bytes for storage domain '{}' in database {} (pattern 3 - bucket name)", size, storageDomainName, actualDatabaseName);
+                        return size;
+                    }
+                } catch (Exception e) {
+                    logger.warn("Query pattern 3 (bucket name) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
                 }
-            } catch (Exception e) {
-                logger.warn("Query pattern 3 (bucket name) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
-            }
-            
-            // Pattern 3: Query by storage domain name directly (if it's stored as a column in bucket)
-            try {
-                Long size = jdbc.queryForObject(
-                    "SELECT COALESCE(SUM(bl.length), 0) " +
-                    "FROM ds3.bucket b " +
-                    "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
-                    "LEFT JOIN ds3.blob bl ON bl.object_id = so.id " +
-                    "WHERE b.storage_domain ILIKE ? OR b.storage_domain_name ILIKE ?",
-                    Long.class,
-                    storageDomainName,
-                    storageDomainName
-                );
-                if (size != null && size > 0) {
-                    logger.info("Found {} bytes for storage domain '{}' in database {} (pattern 3)", size, storageDomainName, actualDatabaseName);
-                    return size;
-                }
-            } catch (Exception e) {
-                logger.warn("Query pattern 3 failed for storage domain '{}': {}", storageDomainName, e.getMessage());
-            }
-            
-            // Pattern 4: Fallback - try exact match (case-sensitive) as last resort
-            try {
-                Long size = jdbc.queryForObject(
-                    "SELECT COALESCE(SUM(bl.length), 0) " +
-                    "FROM ds3.storage_domain sd " +
-                    "JOIN ds3.storage_domain_member sdm ON sdm.storage_domain_id = sd.id " +
-                    "JOIN ds3.bucket b ON (b.id = sdm.bucket_id OR b.id = sdm.tape_partition_id OR b.id = sdm.pool_partition_id) " +
-                    "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
-                    "LEFT JOIN ds3.blob bl ON bl.object_id = so.id " +
-                    "WHERE sd.name = ?",
-                    Long.class,
-                    storageDomainName
-                );
-                if (size != null && size > 0) {
-                    logger.info("Found {} bytes for storage domain '{}' in database {} (pattern 4 - exact match)", size, storageDomainName, actualDatabaseName);
-                    return size;
-                }
-            } catch (Exception e) {
-                logger.warn("Query pattern 4 (exact match) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
             }
             
             logger.error("Could not query size for storage domain '{}' in database {}. All query patterns failed.", storageDomainName, actualDatabaseName);
