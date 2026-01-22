@@ -77,9 +77,13 @@ export default function Phases() {
 
   const duplicateMutation = useMutation({
     mutationFn: async (phase: MigrationPhase) => {
+      const projectId = phase.migrationId || (phase as any)?.projectId;
+      if (!projectId) {
+        throw new Error('Phase has no project ID');
+      }
       const duplicateData = {
         name: `${phase.name} (Copy)`,
-        projectId: phase.migrationId,
+        projectId: projectId,
         type: phase.type as MigrationPhase['type'],
         source: phase.source,
         target: phase.target,

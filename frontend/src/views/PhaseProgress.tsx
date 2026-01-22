@@ -42,9 +42,13 @@ export default function PhaseProgress() {
   });
 
   const { data: project } = useQuery({
-    queryKey: ['projects', phase?.migrationId],
-    queryFn: () => projectsApi.get(phase!.migrationId),
-    enabled: !!phase?.migrationId,
+    queryKey: ['projects', phase?.migrationId || (phase as any)?.projectId],
+    queryFn: () => {
+      const projectId = phase?.migrationId || (phase as any)?.projectId;
+      if (!projectId) throw new Error('Phase has no project ID');
+      return projectsApi.get(projectId);
+    },
+    enabled: !!(phase?.migrationId || (phase as any)?.projectId),
   });
 
   const { data: bucketData = [] } = useQuery({
