@@ -166,16 +166,23 @@ public class ReportService {
                     isSourceBucket = bd.getStorageDomain().equals(phase.getSource()) && 
                         !bd.getBucketName().equals(phase.getSource()) && 
                         !bd.getBucketName().equals(phase.getTarget());
+                    logger.debug("Bucket '{}' (storage_domain='{}', source='{}'): isSourceBucket={} (matches phase source '{}')", 
+                        bd.getBucketName(), bd.getStorageDomain(), bd.getSource(), isSourceBucket, phase.getSource());
                 } else {
                     // Fallback for old data: match by database type
                     isSourceBucket = bd.getSource().equalsIgnoreCase(sourceDbType) && 
                         !bd.getBucketName().equals(phase.getSource()) && 
                         !bd.getBucketName().equals(phase.getTarget());
+                    logger.debug("Bucket '{}' (storage_domain=null, source='{}'): isSourceBucket={} (matches sourceDbType '{}')", 
+                        bd.getBucketName(), bd.getSource(), isSourceBucket, sourceDbType);
                 }
                 
                 if (isSelectedBucket && isSourceBucket) {
-                    sourceObjects += bd.getObjectCount() != null ? bd.getObjectCount() : 0L;
-                    sourceSize += bd.getSizeBytes() != null ? bd.getSizeBytes() : 0L;
+                    long count = bd.getObjectCount() != null ? bd.getObjectCount() : 0L;
+                    long size = bd.getSizeBytes() != null ? bd.getSizeBytes() : 0L;
+                    sourceObjects += count;
+                    sourceSize += size;
+                    logger.debug("Added source bucket '{}': {} objects, {} bytes", bd.getBucketName(), count, size);
                 }
                 
                 // Check if this is a target bucket (matches target storage domain)
@@ -184,21 +191,32 @@ public class ReportService {
                     isTargetBucket = bd.getStorageDomain().equals(phase.getTarget()) && 
                         !bd.getBucketName().equals(phase.getSource()) && 
                         !bd.getBucketName().equals(phase.getTarget());
+                    logger.debug("Bucket '{}' (storage_domain='{}', source='{}'): isTargetBucket={} (matches phase target '{}')", 
+                        bd.getBucketName(), bd.getStorageDomain(), bd.getSource(), isTargetBucket, phase.getTarget());
                 } else {
                     // Fallback for old data: match by database type
                     isTargetBucket = bd.getSource().equalsIgnoreCase(targetDbType) && 
                         !bd.getBucketName().equals(phase.getSource()) && 
                         !bd.getBucketName().equals(phase.getTarget());
+                    logger.debug("Bucket '{}' (storage_domain=null, source='{}'): isTargetBucket={} (matches targetDbType '{}')", 
+                        bd.getBucketName(), bd.getSource(), isTargetBucket, targetDbType);
                 }
                 
                 if (isSelectedBucket && isTargetBucket) {
-                    targetObjects += bd.getObjectCount() != null ? bd.getObjectCount() : 0L;
-                    targetSize += bd.getSizeBytes() != null ? bd.getSizeBytes() : 0L;
+                    long count = bd.getObjectCount() != null ? bd.getObjectCount() : 0L;
+                    long size = bd.getSizeBytes() != null ? bd.getSizeBytes() : 0L;
+                    targetObjects += count;
+                    targetSize += size;
+                    logger.debug("Added target bucket '{}': {} objects, {} bytes", bd.getBucketName(), count, size);
+                }
+                
+                if (!isSelectedBucket) {
+                    logger.debug("Bucket '{}' filtered out (not in selected buckets: {})", bd.getBucketName(), bucketsToQuery);
                 }
             }
             
-            logger.info("Latest bucket data (timestamp: {}): source={} objects ({} bytes), target={} objects ({} bytes)", 
-                latestTimestamp, sourceObjects, sourceSize, targetObjects, targetSize);
+            logger.info("Latest bucket data (timestamp: {}): source={} objects ({} bytes), target={} objects ({} bytes), bucketsToQuery={}", 
+                latestTimestamp, sourceObjects, sourceSize, targetObjects, targetSize, bucketsToQuery);
         }
         
         if (baselineTimestamp != null && !baselineTimestamp.equals(latestTimestamp)) {
@@ -265,21 +283,50 @@ public class ReportService {
             logger.info("Baseline and latest are same timestamp, using current values as baseline");
         }
         
-        // Fallback: if no bucket_data, use migration_data (backward compatibility)
-        if (sourceObjects == 0 && targetObjects == 0 && latest.isPresent()) {
-            logger.warn("No bucket_data found for phase '{}', falling back to migration_data aggregate", phaseId);
+        // Fallback: if bucket_data calculation resulted in 0, use migration_data (backward compatibility)
+        // This can happen if:
+        // 1. No bucket_data exists
+        // 2. bucket_data exists but doesn't match filters (storage_domain mismatch, etc.)
+        // 3. Selected buckets filter excluded all data
+        if ((sourceObjects == 0 && targetObjects == 0) && latest.isPresent()) {
+            logger.warn("Bucket data calculation resulted in 0 objects for phase '{}'. " +
+                "This might indicate: 1) No bucket_data exists, 2) Storage domain mismatch, 3) Bucket filter issue. " +
+                "Falling back to migration_data aggregate.", phaseId);
             MigrationData last = latest.get();
-            sourceObjects = last.getSourceObjects() != null ? last.getSourceObjects() : 0L;
-            sourceSize = last.getSourceSize() != null ? last.getSourceSize() : 0L;
-            targetObjects = last.getTargetObjects() != null ? last.getTargetObjects() : 0L;
-            targetSize = last.getTargetSize() != null ? last.getTargetSize() : 0L;
+            long migrationSourceObjects = last.getSourceObjects() != null ? last.getSourceObjects() : 0L;
+            long migrationSourceSize = last.getSourceSize() != null ? last.getSourceSize() : 0L;
+            long migrationTargetObjects = last.getTargetObjects() != null ? last.getTargetObjects() : 0L;
+            long migrationTargetSize = last.getTargetSize() != null ? last.getTargetSize() : 0L;
             
-            if (reference.isPresent()) {
-                MigrationData ref = reference.get();
-                baselineSourceObjects = ref.getSourceObjects() != null ? ref.getSourceObjects() : 0L;
-                baselineSourceSize = ref.getSourceSize() != null ? ref.getSourceSize() : 0L;
-                baselineTargetObjects = ref.getTargetObjects() != null ? ref.getTargetObjects() : 0L;
-                baselineTargetSize = ref.getTargetSize() != null ? ref.getTargetSize() : 0L;
+            // Only use migration_data if it has actual values
+            if (migrationSourceObjects > 0 || migrationTargetObjects > 0) {
+                logger.info("Using migration_data fallback: source={} objects, target={} objects", 
+                    migrationSourceObjects, migrationTargetObjects);
+                sourceObjects = migrationSourceObjects;
+                sourceSize = migrationSourceSize;
+                targetObjects = migrationTargetObjects;
+                targetSize = migrationTargetSize;
+                
+                if (reference.isPresent()) {
+                    MigrationData ref = reference.get();
+                    baselineSourceObjects = ref.getSourceObjects() != null ? ref.getSourceObjects() : 0L;
+                    baselineSourceSize = ref.getSourceSize() != null ? ref.getSourceSize() : 0L;
+                    baselineTargetObjects = ref.getTargetObjects() != null ? ref.getTargetObjects() : 0L;
+                    baselineTargetSize = ref.getTargetSize() != null ? ref.getTargetSize() : 0L;
+                }
+            } else {
+                logger.warn("Migration_data also has 0 objects. No data available for phase '{}'.", phaseId);
+            }
+        } else if (sourceObjects > 0 && targetObjects == 0 && latest.isPresent()) {
+            // Source has data but target is 0 - check if migration_data has target data
+            MigrationData last = latest.get();
+            long migrationTargetObjects = last.getTargetObjects() != null ? last.getTargetObjects() : 0L;
+            if (migrationTargetObjects > 0) {
+                logger.warn("Bucket data shows target=0 but migration_data shows target={}. " +
+                    "This might indicate a storage_domain mismatch. Using migration_data for target.", 
+                    migrationTargetObjects);
+                targetObjects = migrationTargetObjects;
+                targetSize = last.getTargetSize() != null ? last.getTargetSize() : 0L;
             }
         }
         
