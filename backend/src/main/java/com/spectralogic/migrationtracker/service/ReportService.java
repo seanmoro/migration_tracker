@@ -205,9 +205,31 @@ public class ReportService {
             // Query object count by storage domain
             // Try multiple query patterns to find the right schema
             // Use case-insensitive matching (ILIKE) for better compatibility
-            // Pattern 1: Direct query on bucket name matching storage domain name (case-insensitive)
-            // Storage domain name might be the bucket name or bucket name prefix
-            // This is the most reliable pattern since storage_domain_member may not have bucket_id
+            // Pattern 1: Storage Domain -> Storage Domain Member -> Pool/Tape -> Bucket -> Objects
+            // This is the correct relationship based on the schema:
+            // storage_domain -> storage_domain_member -> pool.pool or tape.tape -> bucket -> s3_object
+            try {
+                Long count = jdbc.queryForObject(
+                    "SELECT COUNT(DISTINCT so.id) " +
+                    "FROM ds3.storage_domain sd " +
+                    "JOIN ds3.storage_domain_member sdm ON sdm.storage_domain_id = sd.id " +
+                    "LEFT JOIN pool.pool p ON p.storage_domain_member_id = sdm.id " +
+                    "LEFT JOIN tape.tape t ON t.storage_domain_member_id = sdm.id " +
+                    "LEFT JOIN ds3.bucket b ON (b.id = p.bucket_id OR b.id = t.bucket_id) " +
+                    "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
+                    "WHERE sd.name ILIKE ? AND b.id IS NOT NULL",
+                    Long.class,
+                    storageDomainName
+                );
+                if (count != null && count > 0) {
+                    logger.info("Found {} objects for storage domain '{}' in database {} (pattern 1 - via pool/tape)", count, storageDomainName, actualDatabaseName);
+                    return count;
+                }
+            } catch (Exception e) {
+                logger.warn("Query pattern 1 (via pool/tape) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
+            }
+            
+            // Pattern 2: Fallback - Direct bucket name matching (in case storage domain name matches bucket name)
             try {
                 Long count = jdbc.queryForObject(
                     "SELECT COUNT(DISTINCT so.id) " +
@@ -219,33 +241,11 @@ public class ReportService {
                     storageDomainName + "%"
                 );
                 if (count != null && count > 0) {
-                    logger.info("Found {} objects for storage domain '{}' in database {} (pattern 1 - bucket name)", count, storageDomainName, actualDatabaseName);
+                    logger.info("Found {} objects for storage domain '{}' in database {} (pattern 2 - bucket name)", count, storageDomainName, actualDatabaseName);
                     return count;
                 }
             } catch (Exception e) {
-                logger.warn("Query pattern 1 (bucket name) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
-            }
-            
-            // Pattern 2: Try storage_domain -> storage_domain_member -> tape_partition -> bucket
-            // Note: storage_domain_member may not have bucket_id, so we try tape_partition_id
-            try {
-                Long count = jdbc.queryForObject(
-                    "SELECT COUNT(DISTINCT so.id) " +
-                    "FROM ds3.storage_domain sd " +
-                    "JOIN ds3.storage_domain_member sdm ON sdm.storage_domain_id = sd.id " +
-                    "LEFT JOIN tape.tape_partition tp ON tp.id = sdm.tape_partition_id " +
-                    "LEFT JOIN ds3.bucket b ON (b.id = sdm.pool_partition_id OR b.name = tp.name) " +
-                    "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
-                    "WHERE sd.name ILIKE ? AND b.id IS NOT NULL",
-                    Long.class,
-                    storageDomainName
-                );
-                if (count != null && count > 0) {
-                    logger.info("Found {} objects for storage domain '{}' in database {} (pattern 2 - via tape_partition)", count, storageDomainName, actualDatabaseName);
-                    return count;
-                }
-            } catch (Exception e) {
-                logger.warn("Query pattern 2 (via tape_partition) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
+                logger.warn("Query pattern 2 (bucket name) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
             }
             
             // Pattern 3: Query by storage domain name directly (if it's stored as a column in bucket)
@@ -355,8 +355,31 @@ public class ReportService {
             // Query total size by storage domain
             // Try multiple query patterns to find the right schema
             // Use case-insensitive matching (ILIKE) for better compatibility
-            // Pattern 1: Direct query on bucket name matching storage domain name (case-insensitive)
-            // This is the most reliable pattern since storage_domain_member may not have bucket_id
+            // Pattern 1: Storage Domain -> Storage Domain Member -> Pool/Tape -> Bucket -> Objects
+            // This is the correct relationship based on the schema
+            try {
+                Long size = jdbc.queryForObject(
+                    "SELECT COALESCE(SUM(bl.length), 0) " +
+                    "FROM ds3.storage_domain sd " +
+                    "JOIN ds3.storage_domain_member sdm ON sdm.storage_domain_id = sd.id " +
+                    "LEFT JOIN pool.pool p ON p.storage_domain_member_id = sdm.id " +
+                    "LEFT JOIN tape.tape t ON t.storage_domain_member_id = sdm.id " +
+                    "LEFT JOIN ds3.bucket b ON (b.id = p.bucket_id OR b.id = t.bucket_id) " +
+                    "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
+                    "LEFT JOIN ds3.blob bl ON bl.object_id = so.id " +
+                    "WHERE sd.name ILIKE ? AND b.id IS NOT NULL",
+                    Long.class,
+                    storageDomainName
+                );
+                if (size != null && size > 0) {
+                    logger.info("Found {} bytes for storage domain '{}' in database {} (pattern 1 - via pool/tape)", size, storageDomainName, actualDatabaseName);
+                    return size;
+                }
+            } catch (Exception e) {
+                logger.warn("Query pattern 1 (via pool/tape) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
+            }
+            
+            // Pattern 2: Fallback - Direct bucket name matching
             try {
                 Long size = jdbc.queryForObject(
                     "SELECT COALESCE(SUM(bl.length), 0) " +
@@ -369,34 +392,11 @@ public class ReportService {
                     storageDomainName + "%"
                 );
                 if (size != null && size > 0) {
-                    logger.info("Found {} bytes for storage domain '{}' in database {} (pattern 1 - bucket name)", size, storageDomainName, actualDatabaseName);
+                    logger.info("Found {} bytes for storage domain '{}' in database {} (pattern 2 - bucket name)", size, storageDomainName, actualDatabaseName);
                     return size;
                 }
             } catch (Exception e) {
-                logger.warn("Query pattern 1 (bucket name) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
-            }
-            
-            // Pattern 2: Try storage_domain -> storage_domain_member -> tape_partition -> bucket
-            // Note: storage_domain_member may not have bucket_id, so we try tape_partition_id
-            try {
-                Long size = jdbc.queryForObject(
-                    "SELECT COALESCE(SUM(bl.length), 0) " +
-                    "FROM ds3.storage_domain sd " +
-                    "JOIN ds3.storage_domain_member sdm ON sdm.storage_domain_id = sd.id " +
-                    "LEFT JOIN tape.tape_partition tp ON tp.id = sdm.tape_partition_id " +
-                    "LEFT JOIN ds3.bucket b ON (b.id = sdm.pool_partition_id OR b.name = tp.name) " +
-                    "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
-                    "LEFT JOIN ds3.blob bl ON bl.object_id = so.id " +
-                    "WHERE sd.name ILIKE ? AND b.id IS NOT NULL",
-                    Long.class,
-                    storageDomainName
-                );
-                if (size != null && size > 0) {
-                    logger.info("Found {} bytes for storage domain '{}' in database {} (pattern 2 - via tape_partition)", size, storageDomainName, actualDatabaseName);
-                    return size;
-                }
-            } catch (Exception e) {
-                logger.warn("Query pattern 2 (via tape_partition) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
+                logger.warn("Query pattern 2 (bucket name) failed for storage domain '{}': {}", storageDomainName, e.getMessage());
             }
             
             // Pattern 3: Query by storage domain name directly (if it's stored as a column in bucket)
