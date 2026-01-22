@@ -6,10 +6,18 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.spectralogic.migrationtracker.api.dto.ExportOptions;
 import com.spectralogic.migrationtracker.api.dto.Forecast;
 import com.spectralogic.migrationtracker.api.dto.PhaseProgress;
+import com.spectralogic.migrationtracker.config.PostgreSQLConfig;
+import com.spectralogic.migrationtracker.model.Customer;
 import com.spectralogic.migrationtracker.model.MigrationData;
 import com.spectralogic.migrationtracker.model.MigrationPhase;
+import com.spectralogic.migrationtracker.model.MigrationProject;
 import com.spectralogic.migrationtracker.repository.MigrationDataRepository;
 import com.spectralogic.migrationtracker.repository.PhaseRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
@@ -28,76 +36,346 @@ import java.util.Optional;
 @Service
 public class ReportService {
 
+    private static final Logger logger = LoggerFactory.getLogger(ReportService.class);
+    
     private final PhaseRepository phaseRepository;
     private final MigrationDataRepository dataRepository;
+    private final ProjectService projectService;
+    private final CustomerService customerService;
+    private final PostgreSQLConfig postgresConfig;
 
-    public ReportService(PhaseRepository phaseRepository, MigrationDataRepository dataRepository) {
+    @Value("${postgres.blackpearl.host:localhost}")
+    private String blackpearlHost;
+
+    @Value("${postgres.blackpearl.port:5432}")
+    private int blackpearlPort;
+
+    @Value("${postgres.blackpearl.username:postgres}")
+    private String blackpearlUsername;
+
+    @Value("${postgres.blackpearl.password:}")
+    private String blackpearlPassword;
+
+    @Value("${postgres.rio.host:localhost}")
+    private String rioHost;
+
+    @Value("${postgres.rio.port:5432}")
+    private int rioPort;
+
+    @Value("${postgres.rio.username:postgres}")
+    private String rioUsername;
+
+    @Value("${postgres.rio.password:}")
+    private String rioPassword;
+
+    public ReportService(PhaseRepository phaseRepository, MigrationDataRepository dataRepository,
+                         ProjectService projectService, CustomerService customerService,
+                         PostgreSQLConfig postgresConfig) {
         this.phaseRepository = phaseRepository;
         this.dataRepository = dataRepository;
+        this.projectService = projectService;
+        this.customerService = customerService;
+        this.postgresConfig = postgresConfig;
     }
 
     public PhaseProgress getPhaseProgress(String phaseId) {
         MigrationPhase phase = phaseRepository.findById(phaseId)
             .orElseThrow(() -> new RuntimeException("Phase not found: " + phaseId));
 
-        Optional<MigrationData> reference = dataRepository.findReferenceByPhaseId(phaseId);
-        Optional<MigrationData> latest = dataRepository.findLatestByPhaseId(phaseId);
-
         PhaseProgress progress = new PhaseProgress();
         progress.setPhaseId(phaseId);
         progress.setPhaseName(phase.getName());
 
-        if (latest.isPresent()) {
-            MigrationData last = latest.get();
-            
-            // Calculate progress
-            if (reference.isPresent()) {
-                // Use reference as baseline - this is the correct approach
-                MigrationData ref = reference.get();
-                
-                // Set source values from REFERENCE (baseline)
-                progress.setSourceObjects(ref.getSourceObjects());
-                progress.setSourceSize(ref.getSourceSize());
-                
-                // Set target values from LATEST (current state)
-                progress.setTargetObjects(last.getTargetObjects());
-                progress.setTargetSize(last.getTargetSize());
-                
-                // Calculate progress: (target objects migrated) / (total source objects to migrate)
-                // targetDiff = how many objects have been migrated since reference
-                long targetDiff = last.getTargetObjects() - ref.getTargetObjects();
-                long totalSource = ref.getSourceObjects();
-                
-                int progressPercent = totalSource > 0 
-                    ? (int) ((targetDiff * 100) / totalSource)
-                    : 0;
-                
-                progress.setProgress(Math.max(0, Math.min(100, progressPercent)));
-            } else {
-                // No reference - use latest data point for both source and target
-                // This is less accurate but the best we can do without a reference
-                progress.setSourceObjects(last.getSourceObjects());
-                progress.setTargetObjects(last.getTargetObjects());
-                progress.setSourceSize(last.getSourceSize());
-                progress.setTargetSize(last.getTargetSize());
-                
-                // Calculate progress based on current target vs source
-                int progressPercent = last.getSourceObjects() > 0 
-                    ? (int) ((last.getTargetObjects() * 100) / last.getSourceObjects())
-                    : 0;
-                
-                progress.setProgress(Math.max(0, Math.min(100, progressPercent)));
-            }
-        } else {
-            // No data points at all
-            progress.setProgress(0);
-            progress.setSourceObjects(0L);
-            progress.setTargetObjects(0L);
-            progress.setSourceSize(0L);
-            progress.setTargetSize(0L);
-        }
+        // Get customer ID from phase -> project -> customer
+        MigrationProject project = projectService.findById(phase.getMigrationId());
+        Customer customer = customerService.findById(project.getCustomerId());
+        
+        // Determine database type from phase source (default to blackpearl)
+        String databaseType = determineDatabaseType(phase.getSource());
+        
+        // Query PostgreSQL for current object counts from source and target storage domains
+        long sourceObjects = queryObjectCountByStorageDomain(customer.getId(), phase.getSource(), databaseType);
+        long sourceSize = querySizeByStorageDomain(customer.getId(), phase.getSource(), databaseType);
+        long targetObjects = queryObjectCountByStorageDomain(customer.getId(), phase.getTarget(), databaseType);
+        long targetSize = querySizeByStorageDomain(customer.getId(), phase.getTarget(), databaseType);
+        
+        progress.setSourceObjects(sourceObjects);
+        progress.setSourceSize(sourceSize);
+        progress.setTargetObjects(targetObjects);
+        progress.setTargetSize(targetSize);
+        
+        // Calculate progress: (target objects) / (source objects) * 100
+        int progressPercent = sourceObjects > 0 
+            ? (int) ((targetObjects * 100) / sourceObjects)
+            : 0;
+        
+        progress.setProgress(Math.max(0, Math.min(100, progressPercent)));
 
         return progress;
+    }
+    
+    /**
+     * Determine database type from storage domain name
+     */
+    private String determineDatabaseType(String storageDomain) {
+        if (storageDomain != null && storageDomain.toLowerCase().contains("rio")) {
+            return "rio";
+        }
+        return "blackpearl";
+    }
+    
+    /**
+     * Query PostgreSQL for object count by storage domain name
+     */
+    private long queryObjectCountByStorageDomain(String customerId, String storageDomainName, String databaseType) {
+        try {
+            Customer customer = customerService.findById(customerId);
+            String customerName = customer.getName().toLowerCase().replaceAll("[^a-z0-9]", "_");
+            
+            // Construct customer-specific database name
+            String databaseName;
+            String host;
+            int port;
+            String username;
+            String password;
+            
+            if (databaseType.equalsIgnoreCase("blackpearl")) {
+                databaseName = "tapesystem_" + customerName;
+                host = blackpearlHost;
+                port = blackpearlPort;
+                username = blackpearlUsername;
+                password = blackpearlPassword != null ? blackpearlPassword : "";
+            } else {
+                databaseName = "rio_db_" + customerName;
+                host = rioHost;
+                port = rioPort;
+                username = rioUsername;
+                password = rioPassword != null ? rioPassword : "";
+            }
+            
+            // Create data source for customer-specific database
+            DriverManagerDataSource dataSource = new DriverManagerDataSource();
+            dataSource.setDriverClassName("org.postgresql.Driver");
+            dataSource.setUrl(String.format("jdbc:postgresql://%s:%d/%s", host, port, databaseName));
+            dataSource.setUsername(username);
+            dataSource.setPassword(password);
+            
+            JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+            
+            // Try customer-specific database first, fallback to generic
+            String actualDatabaseName = databaseName;
+            try {
+                jdbc.query("SELECT 1", (rs, rowNum) -> rs.getInt(1));
+            } catch (Exception e) {
+                logger.warn("Cannot connect to customer-specific database {}: {}. Trying generic database as fallback.", databaseName, e.getMessage());
+                String genericDatabaseName = databaseType.equalsIgnoreCase("blackpearl") ? "tapesystem" : "rio_db";
+                try {
+                    dataSource.setUrl(String.format("jdbc:postgresql://%s:%d/%s", host, port, genericDatabaseName));
+                    jdbc = new JdbcTemplate(dataSource);
+                    jdbc.query("SELECT 1", (rs, rowNum) -> rs.getInt(1));
+                    actualDatabaseName = genericDatabaseName;
+                } catch (Exception e2) {
+                    logger.error("Cannot connect to either customer-specific database {} or generic database {}: {}", 
+                        databaseName, genericDatabaseName, e2.getMessage());
+                    return 0L;
+                }
+            }
+            
+            // Query object count by storage domain
+            // Try multiple query patterns to find the right schema
+            try {
+                // Pattern 1: Join storage_domain -> storage_domain_member -> bucket -> s3_object
+                Long count = jdbc.queryForObject(
+                    "SELECT COUNT(DISTINCT so.id) " +
+                    "FROM ds3.storage_domain sd " +
+                    "JOIN ds3.storage_domain_member sdm ON sdm.storage_domain_id = sd.id " +
+                    "JOIN ds3.bucket b ON (b.id = sdm.bucket_id OR b.id = sdm.tape_partition_id OR b.id = sdm.pool_partition_id) " +
+                    "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
+                    "WHERE sd.name = ?",
+                    Long.class,
+                    storageDomainName
+                );
+                if (count != null) {
+                    logger.info("Found {} objects for storage domain '{}' in database {} (pattern 1)", count, storageDomainName, actualDatabaseName);
+                    return count;
+                }
+            } catch (Exception e) {
+                logger.debug("Query pattern 1 failed for storage domain '{}': {}", storageDomainName, e.getMessage());
+            }
+            
+            // Pattern 2: Direct query on bucket name matching storage domain name
+            // Storage domain name might be the bucket name or bucket name prefix
+            try {
+                Long count = jdbc.queryForObject(
+                    "SELECT COUNT(DISTINCT so.id) " +
+                    "FROM ds3.bucket b " +
+                    "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
+                    "WHERE b.name = ? OR b.name LIKE ?",
+                    Long.class,
+                    storageDomainName,
+                    storageDomainName + "%"
+                );
+                if (count != null) {
+                    logger.info("Found {} objects for storage domain '{}' in database {} (pattern 2)", count, storageDomainName, actualDatabaseName);
+                    return count;
+                }
+            } catch (Exception e) {
+                logger.debug("Query pattern 2 failed for storage domain '{}': {}", storageDomainName, e.getMessage());
+            }
+            
+            // Pattern 3: Query by storage domain name directly (if it's stored as a column in bucket)
+            try {
+                Long count = jdbc.queryForObject(
+                    "SELECT COUNT(DISTINCT so.id) " +
+                    "FROM ds3.bucket b " +
+                    "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
+                    "WHERE b.storage_domain = ? OR b.storage_domain_name = ?",
+                    Long.class,
+                    storageDomainName,
+                    storageDomainName
+                );
+                if (count != null) {
+                    logger.info("Found {} objects for storage domain '{}' in database {} (pattern 3)", count, storageDomainName, actualDatabaseName);
+                    return count;
+                }
+            } catch (Exception e) {
+                logger.debug("Query pattern 3 failed for storage domain '{}': {}", storageDomainName, e.getMessage());
+            }
+            
+            logger.warn("Could not query object count for storage domain '{}' in database {}", storageDomainName, actualDatabaseName);
+            return 0L;
+        } catch (Exception e) {
+            logger.error("Error querying object count for storage domain '{}': {}", storageDomainName, e.getMessage(), e);
+            return 0L;
+        }
+    }
+    
+    /**
+     * Query PostgreSQL for total size by storage domain name
+     */
+    private long querySizeByStorageDomain(String customerId, String storageDomainName, String databaseType) {
+        try {
+            Customer customer = customerService.findById(customerId);
+            String customerName = customer.getName().toLowerCase().replaceAll("[^a-z0-9]", "_");
+            
+            // Construct customer-specific database name
+            String databaseName;
+            String host;
+            int port;
+            String username;
+            String password;
+            
+            if (databaseType.equalsIgnoreCase("blackpearl")) {
+                databaseName = "tapesystem_" + customerName;
+                host = blackpearlHost;
+                port = blackpearlPort;
+                username = blackpearlUsername;
+                password = blackpearlPassword != null ? blackpearlPassword : "";
+            } else {
+                databaseName = "rio_db_" + customerName;
+                host = rioHost;
+                port = rioPort;
+                username = rioUsername;
+                password = rioPassword != null ? rioPassword : "";
+            }
+            
+            // Create data source for customer-specific database
+            DriverManagerDataSource dataSource = new DriverManagerDataSource();
+            dataSource.setDriverClassName("org.postgresql.Driver");
+            dataSource.setUrl(String.format("jdbc:postgresql://%s:%d/%s", host, port, databaseName));
+            dataSource.setUsername(username);
+            dataSource.setPassword(password);
+            
+            JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+            
+            // Try customer-specific database first, fallback to generic
+            String actualDatabaseName = databaseName;
+            try {
+                jdbc.query("SELECT 1", (rs, rowNum) -> rs.getInt(1));
+            } catch (Exception e) {
+                logger.warn("Cannot connect to customer-specific database {}: {}. Trying generic database as fallback.", databaseName, e.getMessage());
+                String genericDatabaseName = databaseType.equalsIgnoreCase("blackpearl") ? "tapesystem" : "rio_db";
+                try {
+                    dataSource.setUrl(String.format("jdbc:postgresql://%s:%d/%s", host, port, genericDatabaseName));
+                    jdbc = new JdbcTemplate(dataSource);
+                    jdbc.query("SELECT 1", (rs, rowNum) -> rs.getInt(1));
+                    actualDatabaseName = genericDatabaseName;
+                } catch (Exception e2) {
+                    logger.error("Cannot connect to either customer-specific database {} or generic database {}: {}", 
+                        databaseName, genericDatabaseName, e2.getMessage());
+                    return 0L;
+                }
+            }
+            
+            // Query total size by storage domain
+            // Try multiple query patterns to find the right schema
+            try {
+                // Pattern 1: Join storage_domain -> storage_domain_member -> bucket -> s3_object -> blob
+                Long size = jdbc.queryForObject(
+                    "SELECT COALESCE(SUM(bl.length), 0) " +
+                    "FROM ds3.storage_domain sd " +
+                    "JOIN ds3.storage_domain_member sdm ON sdm.storage_domain_id = sd.id " +
+                    "JOIN ds3.bucket b ON (b.id = sdm.bucket_id OR b.id = sdm.tape_partition_id OR b.id = sdm.pool_partition_id) " +
+                    "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
+                    "LEFT JOIN ds3.blob bl ON bl.object_id = so.id " +
+                    "WHERE sd.name = ?",
+                    Long.class,
+                    storageDomainName
+                );
+                if (size != null) {
+                    logger.info("Found {} bytes for storage domain '{}' in database {} (pattern 1)", size, storageDomainName, actualDatabaseName);
+                    return size;
+                }
+            } catch (Exception e) {
+                logger.debug("Query pattern 1 failed for storage domain '{}': {}", storageDomainName, e.getMessage());
+            }
+            
+            // Pattern 2: Direct query on bucket name matching storage domain name
+            try {
+                Long size = jdbc.queryForObject(
+                    "SELECT COALESCE(SUM(bl.length), 0) " +
+                    "FROM ds3.bucket b " +
+                    "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
+                    "LEFT JOIN ds3.blob bl ON bl.object_id = so.id " +
+                    "WHERE b.name = ? OR b.name LIKE ?",
+                    Long.class,
+                    storageDomainName,
+                    storageDomainName + "%"
+                );
+                if (size != null) {
+                    logger.info("Found {} bytes for storage domain '{}' in database {} (pattern 2)", size, storageDomainName, actualDatabaseName);
+                    return size;
+                }
+            } catch (Exception e) {
+                logger.debug("Query pattern 2 failed for storage domain '{}': {}", storageDomainName, e.getMessage());
+            }
+            
+            // Pattern 3: Query by storage domain name directly (if it's stored as a column in bucket)
+            try {
+                Long size = jdbc.queryForObject(
+                    "SELECT COALESCE(SUM(bl.length), 0) " +
+                    "FROM ds3.bucket b " +
+                    "JOIN ds3.s3_object so ON so.bucket_id = b.id " +
+                    "LEFT JOIN ds3.blob bl ON bl.object_id = so.id " +
+                    "WHERE b.storage_domain = ? OR b.storage_domain_name = ?",
+                    Long.class,
+                    storageDomainName,
+                    storageDomainName
+                );
+                if (size != null) {
+                    logger.info("Found {} bytes for storage domain '{}' in database {} (pattern 3)", size, storageDomainName, actualDatabaseName);
+                    return size;
+                }
+            } catch (Exception e) {
+                logger.debug("Query pattern 3 failed for storage domain '{}': {}", storageDomainName, e.getMessage());
+            }
+            
+            logger.warn("Could not query size for storage domain '{}' in database {}", storageDomainName, actualDatabaseName);
+            return 0L;
+        } catch (Exception e) {
+            logger.error("Error querying size for storage domain '{}': {}", storageDomainName, e.getMessage(), e);
+            return 0L;
+        }
     }
 
     public List<MigrationData> getPhaseData(String phaseId, LocalDate from, LocalDate to) {
