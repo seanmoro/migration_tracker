@@ -322,9 +322,21 @@ public class ReportService {
             MigrationData last = latest.get();
             long migrationTargetObjects = last.getTargetObjects() != null ? last.getTargetObjects() : 0L;
             if (migrationTargetObjects > 0) {
+                // Log diagnostic information about bucket_data records
                 logger.warn("Bucket data shows target=0 but migration_data shows target={}. " +
-                    "This might indicate a storage_domain mismatch. Using migration_data for target.", 
-                    migrationTargetObjects);
+                    "This might indicate a storage_domain mismatch. Phase target: '{}'. Using migration_data for target.", 
+                    migrationTargetObjects, phase.getTarget());
+                
+                // Log all bucket_data records for this phase to help diagnose
+                logger.debug("All bucket_data records for phase '{}' (latest timestamp: {}):", phaseId, latestTimestamp);
+                for (com.spectralogic.migrationtracker.model.BucketData bd : allBucketData) {
+                    if (bd.getTimestamp().equals(latestTimestamp)) {
+                        logger.debug("  - Bucket: '{}', Storage Domain: '{}', Source: '{}', Objects: {}, Size: {}",
+                            bd.getBucketName(), bd.getStorageDomain(), bd.getSource(), 
+                            bd.getObjectCount(), bd.getSizeBytes());
+                    }
+                }
+                
                 targetObjects = migrationTargetObjects;
                 targetSize = last.getTargetSize() != null ? last.getTargetSize() : 0L;
             }
