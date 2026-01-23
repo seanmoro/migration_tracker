@@ -754,7 +754,7 @@ public class ReportService {
             y -= 20;
             contentStream.beginText();
             contentStream.newLineAtOffset(50, y);
-            contentStream.showText("Source: " + phase.getSource() + " → Target: " + phase.getTarget());
+            contentStream.showText("Source: " + phase.getSource() + " -> Target: " + phase.getTarget());
             contentStream.endText();
             
             y -= 20;
