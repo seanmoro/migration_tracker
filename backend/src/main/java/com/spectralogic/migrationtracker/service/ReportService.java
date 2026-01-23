@@ -738,60 +738,162 @@ public class ReportService {
                 org.apache.pdfbox.pdmodel.font.Standard14Fonts.FontName.HELVETICA
             );
             
-            contentStream.setFont(boldFont, 16);
+            float y = 750;
+            float leftMargin = 50;
+            float rightMargin = 550;
+            
+            // Header
+            contentStream.setFont(boldFont, 18);
             contentStream.beginText();
-            contentStream.newLineAtOffset(50, 750);
+            contentStream.newLineAtOffset(leftMargin, y);
             contentStream.showText("Phase Report: " + phase.getName());
             contentStream.endText();
             
-            contentStream.setFont(regularFont, 12);
-            float y = 720;
+            y -= 30;
+            contentStream.setFont(regularFont, 10);
             contentStream.beginText();
-            contentStream.newLineAtOffset(50, y);
+            contentStream.newLineAtOffset(leftMargin, y);
             contentStream.showText("Phase ID: " + phase.getId());
             contentStream.endText();
             
-            y -= 20;
+            y -= 15;
             contentStream.beginText();
-            contentStream.newLineAtOffset(50, y);
+            contentStream.newLineAtOffset(leftMargin, y);
             contentStream.showText("Source: " + phase.getSource() + " -> Target: " + phase.getTarget());
             contentStream.endText();
             
-            y -= 20;
+            y -= 30;
+            
+            // Progress Section with Visual Bar
+            contentStream.setFont(boldFont, 14);
             contentStream.beginText();
-            contentStream.newLineAtOffset(50, y);
-            contentStream.showText("Progress: " + progress.getProgress() + "%");
+            contentStream.newLineAtOffset(leftMargin, y);
+            contentStream.showText("Progress");
             contentStream.endText();
             
             y -= 20;
+            contentStream.setFont(regularFont, 12);
             contentStream.beginText();
-            contentStream.newLineAtOffset(50, y);
-            contentStream.showText("Source Objects: " + String.format("%,d", progress.getSourceObjects()) + 
-                                 " | Target Objects: " + String.format("%,d", progress.getTargetObjects()));
+            contentStream.newLineAtOffset(leftMargin, y);
+            contentStream.showText("Overall Progress: " + progress.getProgress() + "%");
             contentStream.endText();
             
-            y -= 20;
+            // Draw progress bar
+            y -= 15;
+            float progressBarWidth = 400;
+            float progressBarHeight = 20;
+            float progressBarX = leftMargin;
+            float progressBarY = y - progressBarHeight;
+            
+            // Background bar (gray)
+            contentStream.setNonStrokingColor(0.9f, 0.9f, 0.9f);
+            contentStream.addRect(progressBarX, progressBarY, progressBarWidth, progressBarHeight);
+            contentStream.fill();
+            
+            // Progress bar (green)
+            float progressWidth = (progressBarWidth * progress.getProgress()) / 100f;
+            contentStream.setNonStrokingColor(0.2f, 0.7f, 0.3f);
+            contentStream.addRect(progressBarX, progressBarY, progressWidth, progressBarHeight);
+            contentStream.fill();
+            
+            // Border
+            contentStream.setStrokingColor(0.5f, 0.5f, 0.5f);
+            contentStream.setLineWidth(1);
+            contentStream.addRect(progressBarX, progressBarY, progressBarWidth, progressBarHeight);
+            contentStream.stroke();
+            
+            y -= 40;
+            
+            // Statistics Section
+            contentStream.setFont(boldFont, 14);
             contentStream.beginText();
-            contentStream.newLineAtOffset(50, y);
-            contentStream.showText("Source Size: " + formatBytes(progress.getSourceSize()) + 
-                                 " | Target Size: " + formatBytes(progress.getTargetSize()));
+            contentStream.newLineAtOffset(leftMargin, y);
+            contentStream.showText("Statistics");
             contentStream.endText();
             
+            y -= 25;
+            contentStream.setFont(regularFont, 11);
+            float statY = y;
+            
+            // Left column
+            contentStream.beginText();
+            contentStream.newLineAtOffset(leftMargin, statY);
+            contentStream.showText("Source Objects: " + String.format("%,d", progress.getSourceObjects()));
+            contentStream.endText();
+            
+            statY -= 18;
+            contentStream.beginText();
+            contentStream.newLineAtOffset(leftMargin, statY);
+            contentStream.showText("Source Size: " + formatBytes(progress.getSourceSize()));
+            contentStream.endText();
+            
+            // Right column
+            statY = y;
+            contentStream.beginText();
+            contentStream.newLineAtOffset(leftMargin + 250, statY);
+            contentStream.showText("Target Objects: " + String.format("%,d", progress.getTargetObjects()));
+            contentStream.endText();
+            
+            statY -= 18;
+            contentStream.beginText();
+            contentStream.newLineAtOffset(leftMargin + 250, statY);
+            contentStream.showText("Target Size: " + formatBytes(progress.getTargetSize()));
+            contentStream.endText();
+            
+            y = statY - 30;
+            
+            // Charts Section (if enabled and data available)
+            boolean includeCharts = options.getIncludeCharts() != null && options.getIncludeCharts();
+            if (includeCharts && data != null && !data.isEmpty()) {
+                y = drawProgressChart(contentStream, data, leftMargin, y - 20, rightMargin - leftMargin, 200, boldFont, regularFont);
+            }
+            
+            // Forecast Section
             if (options.getIncludeForecast() != null && options.getIncludeForecast()) {
-                y -= 30;
+                y -= 20;
                 contentStream.setFont(boldFont, 14);
                 contentStream.beginText();
-                contentStream.newLineAtOffset(50, y);
+                contentStream.newLineAtOffset(leftMargin, y);
                 contentStream.showText("Forecast");
                 contentStream.endText();
                 
-                contentStream.setFont(regularFont, 12);
-                y -= 20;
+                y -= 25;
+                contentStream.setFont(regularFont, 11);
+                float forecastY = y;
+                
                 contentStream.beginText();
-                contentStream.newLineAtOffset(50, y);
-                contentStream.showText("ETA: " + forecast.getEta().toString() + 
-                                     " | Confidence: " + forecast.getConfidence() + "%");
+                contentStream.newLineAtOffset(leftMargin, forecastY);
+                contentStream.showText("Average Rate: " + String.format("%,d", forecast.getAverageRate()) + " objects/day");
                 contentStream.endText();
+                
+                forecastY -= 18;
+                contentStream.beginText();
+                contentStream.newLineAtOffset(leftMargin, forecastY);
+                contentStream.showText("Remaining Objects: " + String.format("%,d", forecast.getRemainingObjects()));
+                contentStream.endText();
+                
+                forecastY -= 18;
+                contentStream.beginText();
+                contentStream.newLineAtOffset(leftMargin, forecastY);
+                contentStream.showText("Remaining Size: " + formatBytes(forecast.getRemainingSize()));
+                contentStream.endText();
+                
+                forecastY -= 18;
+                contentStream.beginText();
+                contentStream.newLineAtOffset(leftMargin, forecastY);
+                contentStream.showText("ETA: " + forecast.getEta().toString());
+                contentStream.endText();
+                
+                forecastY -= 18;
+                contentStream.beginText();
+                contentStream.newLineAtOffset(leftMargin, forecastY);
+                contentStream.showText("Confidence: " + forecast.getConfidence() + "%");
+                contentStream.endText();
+            }
+            
+            // Data Points Table (if enabled)
+            if (options.getIncludeRawData() != null && options.getIncludeRawData() && data != null && !data.isEmpty()) {
+                y = drawDataTable(contentStream, data, leftMargin, y - 30, rightMargin - leftMargin, boldFont, regularFont);
             }
             
             contentStream.close();
@@ -822,6 +924,280 @@ public class ReportService {
                 }
             }
         }
+    }
+    
+    private float drawProgressChart(org.apache.pdfbox.pdmodel.PDPageContentStream contentStream, 
+                                     List<MigrationData> data, 
+                                     float x, float y, 
+                                     float width, float height,
+                                     org.apache.pdfbox.pdmodel.font.PDType1Font boldFont,
+                                     org.apache.pdfbox.pdmodel.font.PDType1Font regularFont) throws IOException {
+        // Chart title
+        contentStream.setFont(boldFont, 14);
+        contentStream.beginText();
+        contentStream.newLineAtOffset(x, y);
+        contentStream.showText("Migration Progress Over Time");
+        contentStream.endText();
+        
+        y -= 25;
+        
+        // Chart area
+        float chartX = x;
+        float chartY = y - height;
+        float chartWidth = width;
+        float chartHeight = height;
+        
+        // Draw chart border
+        contentStream.setStrokingColor(0.7f, 0.7f, 0.7f);
+        contentStream.setLineWidth(1);
+        contentStream.addRect(chartX, chartY, chartWidth, chartHeight);
+        contentStream.stroke();
+        
+        // Find min/max values for scaling
+        long maxObjects = 0;
+        for (MigrationData d : data) {
+            maxObjects = Math.max(maxObjects, Math.max(d.getSourceObjects(), d.getTargetObjects()));
+        }
+        if (maxObjects == 0) maxObjects = 1;
+        
+        // Draw grid lines
+        contentStream.setStrokingColor(0.9f, 0.9f, 0.9f);
+        contentStream.setLineWidth(0.5f);
+        int gridLines = 5;
+        for (int i = 0; i <= gridLines; i++) {
+            float gridY = chartY + (chartHeight * i / gridLines);
+            contentStream.moveTo(chartX, gridY);
+            contentStream.lineTo(chartX + chartWidth, gridY);
+            contentStream.stroke();
+        }
+        
+        // Draw Y-axis labels
+        contentStream.setFont(regularFont, 8);
+        contentStream.setNonStrokingColor(0.3f, 0.3f, 0.3f);
+        for (int i = 0; i <= gridLines; i++) {
+            long value = maxObjects - (maxObjects * i / gridLines);
+            String label = String.format("%,d", value);
+            contentStream.beginText();
+            contentStream.newLineAtOffset(chartX - 5, chartY + (chartHeight * i / gridLines) - 3);
+            contentStream.showText(label);
+            contentStream.endText();
+        }
+        
+        // Draw data points and lines
+        if (data.size() > 1) {
+            // Sort data by timestamp
+            List<MigrationData> sortedData = new java.util.ArrayList<>(data);
+            sortedData.sort((a, b) -> a.getTimestamp().compareTo(b.getTimestamp()));
+            
+            float pointSpacing = chartWidth / (sortedData.size() - 1);
+            
+            // Draw source objects line (blue)
+            contentStream.setStrokingColor(0.2f, 0.4f, 0.8f);
+            contentStream.setLineWidth(2);
+            for (int i = 0; i < sortedData.size() - 1; i++) {
+                MigrationData d1 = sortedData.get(i);
+                MigrationData d2 = sortedData.get(i + 1);
+                
+                float x1 = chartX + (i * pointSpacing);
+                float y1 = chartY + (chartHeight * d1.getSourceObjects() / maxObjects);
+                float x2 = chartX + ((i + 1) * pointSpacing);
+                float y2 = chartY + (chartHeight * d2.getSourceObjects() / maxObjects);
+                
+                contentStream.moveTo(x1, y1);
+                contentStream.lineTo(x2, y2);
+                contentStream.stroke();
+                
+                // Draw point
+                contentStream.setNonStrokingColor(0.2f, 0.4f, 0.8f);
+                contentStream.addRect(x1 - 2, y1 - 2, 4, 4);
+                contentStream.fill();
+            }
+            
+            // Draw target objects line (green)
+            contentStream.setStrokingColor(0.2f, 0.7f, 0.3f);
+            contentStream.setLineWidth(2);
+            for (int i = 0; i < sortedData.size() - 1; i++) {
+                MigrationData d1 = sortedData.get(i);
+                MigrationData d2 = sortedData.get(i + 1);
+                
+                float x1 = chartX + (i * pointSpacing);
+                float y1 = chartY + (chartHeight * d1.getTargetObjects() / maxObjects);
+                float x2 = chartX + ((i + 1) * pointSpacing);
+                float y2 = chartY + (chartHeight * d2.getTargetObjects() / maxObjects);
+                
+                contentStream.moveTo(x1, y1);
+                contentStream.lineTo(x2, y2);
+                contentStream.stroke();
+                
+                // Draw point
+                contentStream.setNonStrokingColor(0.2f, 0.7f, 0.3f);
+                contentStream.addRect(x1 - 2, y1 - 2, 4, 4);
+                contentStream.fill();
+            }
+            
+            // Draw X-axis labels (dates)
+            contentStream.setFont(regularFont, 7);
+            contentStream.setNonStrokingColor(0.3f, 0.3f, 0.3f);
+            java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("MM/dd");
+            for (int i = 0; i < sortedData.size(); i++) {
+                if (i % Math.max(1, sortedData.size() / 5) == 0 || i == sortedData.size() - 1) {
+                    MigrationData d = sortedData.get(i);
+                    String dateLabel = d.getTimestamp().format(formatter);
+                    float labelX = chartX + (i * pointSpacing) - 15;
+                    contentStream.beginText();
+                    contentStream.newLineAtOffset(labelX, chartY - 15);
+                    contentStream.showText(dateLabel);
+                    contentStream.endText();
+                }
+            }
+        }
+        
+        // Legend
+        float legendY = chartY - 30;
+        contentStream.setFont(regularFont, 9);
+        
+        // Source legend (blue)
+        contentStream.setNonStrokingColor(0.2f, 0.4f, 0.8f);
+        contentStream.addRect(chartX, legendY, 10, 3);
+        contentStream.fill();
+        contentStream.setNonStrokingColor(0, 0, 0);
+        contentStream.beginText();
+        contentStream.newLineAtOffset(chartX + 15, legendY);
+        contentStream.showText("Source Objects");
+        contentStream.endText();
+        
+        // Target legend (green)
+        contentStream.setNonStrokingColor(0.2f, 0.7f, 0.3f);
+        contentStream.addRect(chartX + 120, legendY, 10, 3);
+        contentStream.fill();
+        contentStream.setNonStrokingColor(0, 0, 0);
+        contentStream.beginText();
+        contentStream.newLineAtOffset(chartX + 135, legendY);
+        contentStream.showText("Target Objects");
+        contentStream.endText();
+        
+        return chartY - 50;
+    }
+    
+    private float drawDataTable(org.apache.pdfbox.pdmodel.PDPageContentStream contentStream,
+                                List<MigrationData> data,
+                                float x, float y,
+                                float width,
+                                org.apache.pdfbox.pdmodel.font.PDType1Font boldFont,
+                                org.apache.pdfbox.pdmodel.font.PDType1Font regularFont) throws IOException {
+        // Table title
+        contentStream.setFont(boldFont, 14);
+        contentStream.beginText();
+        contentStream.newLineAtOffset(x, y);
+        contentStream.showText("Data Points");
+        contentStream.endText();
+        
+        y -= 25;
+        
+        // Sort data by timestamp (newest first)
+        List<MigrationData> sortedData = new java.util.ArrayList<>(data);
+        sortedData.sort((a, b) -> b.getTimestamp().compareTo(a.getTimestamp()));
+        
+        // Limit to most recent 10 entries to fit on page
+        int maxRows = Math.min(10, sortedData.size());
+        sortedData = sortedData.subList(0, maxRows);
+        
+        float rowHeight = 20;
+        float tableY = y - rowHeight;
+        
+        // Table header
+        contentStream.setNonStrokingColor(0.8f, 0.8f, 0.8f);
+        contentStream.addRect(x, tableY, width, rowHeight);
+        contentStream.fill();
+        
+        contentStream.setStrokingColor(0.5f, 0.5f, 0.5f);
+        contentStream.setLineWidth(1);
+        contentStream.addRect(x, tableY, width, rowHeight);
+        contentStream.stroke();
+        
+        contentStream.setFont(boldFont, 9);
+        contentStream.setNonStrokingColor(0, 0, 0);
+        float col1 = x + 5;
+        float col2 = x + 100;
+        float col3 = x + 200;
+        float col4 = x + 300;
+        float col5 = x + 400;
+        
+        contentStream.beginText();
+        contentStream.newLineAtOffset(col1, tableY + 6);
+        contentStream.showText("Date");
+        contentStream.endText();
+        
+        contentStream.beginText();
+        contentStream.newLineAtOffset(col2, tableY + 6);
+        contentStream.showText("Source Obj");
+        contentStream.endText();
+        
+        contentStream.beginText();
+        contentStream.newLineAtOffset(col3, tableY + 6);
+        contentStream.showText("Target Obj");
+        contentStream.endText();
+        
+        contentStream.beginText();
+        contentStream.newLineAtOffset(col4, tableY + 6);
+        contentStream.showText("Source Size");
+        contentStream.endText();
+        
+        contentStream.beginText();
+        contentStream.newLineAtOffset(col5, tableY + 6);
+        contentStream.showText("Target Size");
+        contentStream.endText();
+        
+        // Table rows
+        contentStream.setFont(regularFont, 8);
+        java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd");
+        
+        for (int i = 0; i < sortedData.size(); i++) {
+            MigrationData d = sortedData.get(i);
+            float rowY = tableY - (i + 1) * rowHeight;
+            
+            // Alternate row color
+            if (i % 2 == 0) {
+                contentStream.setNonStrokingColor(0.95f, 0.95f, 0.95f);
+                contentStream.addRect(x, rowY, width, rowHeight);
+                contentStream.fill();
+            }
+            
+            // Row border
+            contentStream.setStrokingColor(0.7f, 0.7f, 0.7f);
+            contentStream.setLineWidth(0.5f);
+            contentStream.addRect(x, rowY, width, rowHeight);
+            contentStream.stroke();
+            
+            // Row data
+            contentStream.setNonStrokingColor(0, 0, 0);
+            contentStream.beginText();
+            contentStream.newLineAtOffset(col1, rowY + 6);
+            contentStream.showText(d.getTimestamp().format(formatter));
+            contentStream.endText();
+            
+            contentStream.beginText();
+            contentStream.newLineAtOffset(col2, rowY + 6);
+            contentStream.showText(String.format("%,d", d.getSourceObjects()));
+            contentStream.endText();
+            
+            contentStream.beginText();
+            contentStream.newLineAtOffset(col3, rowY + 6);
+            contentStream.showText(String.format("%,d", d.getTargetObjects()));
+            contentStream.endText();
+            
+            contentStream.beginText();
+            contentStream.newLineAtOffset(col4, rowY + 6);
+            contentStream.showText(formatBytes(d.getSourceSize()));
+            contentStream.endText();
+            
+            contentStream.beginText();
+            contentStream.newLineAtOffset(col5, rowY + 6);
+            contentStream.showText(formatBytes(d.getTargetSize()));
+            contentStream.endText();
+        }
+        
+        return tableY - (sortedData.size() + 1) * rowHeight;
     }
 
     private String escapeHtml(String text) {
