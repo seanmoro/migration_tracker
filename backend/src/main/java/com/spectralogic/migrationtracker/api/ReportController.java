@@ -63,10 +63,8 @@ public class ReportController {
                     filename = "phase-report-" + phaseId + ".html";
                     break;
                 case "pdf":
-                    // For now, PDF returns HTML (can be printed to PDF from browser)
-                    // TODO: Implement proper PDF generation once PDFBox 3.0 font API is resolved
-                    contentType = "text/html";
-                    filename = "phase-report-" + phaseId + ".html";
+                    contentType = "application/pdf";
+                    filename = "phase-report-" + phaseId + ".pdf";
                     break;
                 case "json":
                 default:
