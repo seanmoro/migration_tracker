@@ -220,6 +220,26 @@ public class ReportService {
             logger.info("Latest bucket data (timestamp: {}): source={} objects ({} bytes), target={} objects ({} bytes), bucketsToQuery={}", 
                 latestTimestamp, sourceObjects, sourceSize, targetObjects, targetSize, bucketsToQuery);
             
+            // Log all source buckets being counted for this phase
+            logger.info("Source buckets counted for phase '{}' (storage domain '{}'):", phaseId, phase.getSource());
+            for (com.spectralogic.migrationtracker.model.BucketData bd : latestBucketData.values()) {
+                boolean isSelectedBucket = bucketsToQuery == null || bucketsToQuery.contains(bd.getBucketName());
+                boolean isSourceBucket = false;
+                if (bd.getStorageDomain() != null) {
+                    isSourceBucket = bd.getStorageDomain().equals(phase.getSource()) && 
+                        !bd.getBucketName().equals(phase.getSource()) && 
+                        !bd.getBucketName().equals(phase.getTarget());
+                } else {
+                    isSourceBucket = bd.getSource().equalsIgnoreCase(sourceDbType) && 
+                        !bd.getBucketName().equals(phase.getSource()) && 
+                        !bd.getBucketName().equals(phase.getTarget());
+                }
+                if (isSelectedBucket && isSourceBucket) {
+                    logger.info("  - Source bucket: '{}' in storage domain '{}': {} objects, {} bytes", 
+                        bd.getBucketName(), bd.getStorageDomain(), bd.getObjectCount(), bd.getSizeBytes());
+                }
+            }
+            
             // Compare with migration_data for validation
             if (latest.isPresent()) {
                 MigrationData last = latest.get();
