@@ -219,6 +219,20 @@ public class ReportService {
             
             logger.info("Latest bucket data (timestamp: {}): source={} objects ({} bytes), target={} objects ({} bytes), bucketsToQuery={}", 
                 latestTimestamp, sourceObjects, sourceSize, targetObjects, targetSize, bucketsToQuery);
+            
+            // Compare with migration_data for validation
+            if (latest.isPresent()) {
+                MigrationData last = latest.get();
+                long migrationSourceObjects = last.getSourceObjects() != null ? last.getSourceObjects() : 0L;
+                long migrationTargetObjects = last.getTargetObjects() != null ? last.getTargetObjects() : 0L;
+                logger.info("Comparison - bucket_data: source={}, target={} | migration_data: source={}, target={}", 
+                    sourceObjects, targetObjects, migrationSourceObjects, migrationTargetObjects);
+                if (sourceObjects != migrationSourceObjects || targetObjects != migrationTargetObjects) {
+                    logger.warn("Mismatch detected! bucket_data and migration_data totals differ. " +
+                        "This may indicate: 1) Bucket filtering excluded some data, 2) Data gathering inconsistency, " +
+                        "3) Storage domain mismatch in bucket_data records.");
+                }
+            }
         }
         
         if (baselineTimestamp != null && !baselineTimestamp.equals(latestTimestamp)) {
