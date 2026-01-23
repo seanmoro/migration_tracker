@@ -145,8 +145,10 @@ public class ReportService {
             Map<String, com.spectralogic.migrationtracker.model.BucketData> latestBucketData = new java.util.HashMap<>();
             for (com.spectralogic.migrationtracker.model.BucketData bd : allBucketData) {
                 if (bd.getTimestamp().equals(latestTimestamp)) {
-                    String key = bd.getBucketName() + "|" + bd.getSource();
-                    // Keep only the latest record for each bucket+source combination
+                    // Include storage_domain in key to distinguish source vs target records for same bucket
+                    String storageDomainKey = bd.getStorageDomain() != null ? bd.getStorageDomain() : bd.getSource();
+                    String key = bd.getBucketName() + "|" + storageDomainKey;
+                    // Keep only the latest record for each bucket+storage_domain combination
                     if (!latestBucketData.containsKey(key) || 
                         bd.getLastUpdated().isAfter(latestBucketData.get(key).getLastUpdated())) {
                         latestBucketData.put(key, bd);
@@ -224,7 +226,9 @@ public class ReportService {
             Map<String, com.spectralogic.migrationtracker.model.BucketData> baselineBucketData = new java.util.HashMap<>();
             for (com.spectralogic.migrationtracker.model.BucketData bd : allBucketData) {
                 if (bd.getTimestamp().equals(baselineTimestamp)) {
-                    String key = bd.getBucketName() + "|" + bd.getSource();
+                    // Include storage_domain in key to distinguish source vs target records for same bucket
+                    String storageDomainKey = bd.getStorageDomain() != null ? bd.getStorageDomain() : bd.getSource();
+                    String key = bd.getBucketName() + "|" + storageDomainKey;
                     if (!baselineBucketData.containsKey(key) || 
                         bd.getLastUpdated().isAfter(baselineBucketData.get(key).getLastUpdated())) {
                         baselineBucketData.put(key, bd);
