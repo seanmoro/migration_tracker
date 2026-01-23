@@ -720,12 +720,15 @@ public class ReportService {
     }
 
     private byte[] exportAsPdf(MigrationPhase phase, PhaseProgress progress, List<MigrationData> data, Forecast forecast, ExportOptions options) throws IOException {
+        org.apache.pdfbox.pdmodel.PDDocument document = null;
+        org.apache.pdfbox.pdmodel.PDPageContentStream contentStream = null;
+        
         try {
-            org.apache.pdfbox.pdmodel.PDDocument document = new org.apache.pdfbox.pdmodel.PDDocument();
+            document = new org.apache.pdfbox.pdmodel.PDDocument();
             org.apache.pdfbox.pdmodel.PDPage page = new org.apache.pdfbox.pdmodel.PDPage();
             document.addPage(page);
             
-            org.apache.pdfbox.pdmodel.PDPageContentStream contentStream = new org.apache.pdfbox.pdmodel.PDPageContentStream(document, page);
+            contentStream = new org.apache.pdfbox.pdmodel.PDPageContentStream(document, page);
             
             // In PDFBox 3.0, use PDType1Font constructor with Standard14Fonts.FontName enum
             org.apache.pdfbox.pdmodel.font.PDType1Font boldFont = new org.apache.pdfbox.pdmodel.font.PDType1Font(
@@ -792,14 +795,32 @@ public class ReportService {
             }
             
             contentStream.close();
+            contentStream = null;
             
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             document.save(baos);
             document.close();
+            document = null;
             
             return baos.toByteArray();
         } catch (Exception e) {
+            logger.error("Error generating PDF for phase {}: {}", phase.getId(), e.getMessage(), e);
             throw new IOException("Failed to generate PDF: " + e.getMessage(), e);
+        } finally {
+            if (contentStream != null) {
+                try {
+                    contentStream.close();
+                } catch (IOException e) {
+                    logger.warn("Error closing content stream: {}", e.getMessage());
+                }
+            }
+            if (document != null) {
+                try {
+                    document.close();
+                } catch (IOException e) {
+                    logger.warn("Error closing document: {}", e.getMessage());
+                }
+            }
         }
     }
 

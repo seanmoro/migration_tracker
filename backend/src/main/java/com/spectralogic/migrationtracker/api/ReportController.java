@@ -5,6 +5,8 @@ import com.spectralogic.migrationtracker.api.dto.Forecast;
 import com.spectralogic.migrationtracker.api.dto.PhaseProgress;
 import com.spectralogic.migrationtracker.model.MigrationData;
 import com.spectralogic.migrationtracker.service.ReportService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -19,6 +21,7 @@ import java.util.List;
 @RequestMapping("/api/reports")
 public class ReportController {
 
+    private static final Logger logger = LoggerFactory.getLogger(ReportController.class);
     private final ReportService service;
 
     public ReportController(ReportService service) {
@@ -80,6 +83,10 @@ public class ReportController {
                     .headers(headers)
                     .body(exportData);
         } catch (IOException e) {
+            logger.error("Failed to export phase {} as {}: {}", phaseId, options.getFormat(), e.getMessage(), e);
+            return ResponseEntity.internalServerError().build();
+        } catch (Exception e) {
+            logger.error("Unexpected error exporting phase {} as {}: {}", phaseId, options.getFormat(), e.getMessage(), e);
             return ResponseEntity.internalServerError().build();
         }
     }
