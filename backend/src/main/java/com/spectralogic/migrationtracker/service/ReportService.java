@@ -143,7 +143,9 @@ public class ReportService {
         if (latestTimestamp != null) {
             // Get latest bucket data (for current state)
             Map<String, com.spectralogic.migrationtracker.model.BucketData> latestBucketData = new java.util.HashMap<>();
+            java.util.Set<LocalDate> availableTimestamps = new java.util.HashSet<>();
             for (com.spectralogic.migrationtracker.model.BucketData bd : allBucketData) {
+                availableTimestamps.add(bd.getTimestamp());
                 if (bd.getTimestamp().equals(latestTimestamp)) {
                     // Include storage_domain in key to distinguish source vs target records for same bucket
                     String storageDomainKey = bd.getStorageDomain() != null ? bd.getStorageDomain() : bd.getSource();
@@ -154,6 +156,12 @@ public class ReportService {
                         latestBucketData.put(key, bd);
                     }
                 }
+            }
+            
+            // Log if bucket_data exists but not for the latest timestamp
+            if (!allBucketData.isEmpty() && latestBucketData.isEmpty() && !availableTimestamps.isEmpty()) {
+                logger.debug("bucket_data exists for phase '{}' but not for timestamp {}. " +
+                    "Available timestamps: {}", phaseId, latestTimestamp, availableTimestamps);
             }
             
             // Sum source buckets (filter by selected buckets and storage domain)
@@ -241,16 +249,43 @@ public class ReportService {
             }
             
             // Compare with migration_data for validation
+            // Only warn about mismatch if bucket_data has actual records that don't match
+            // If bucket_data is empty (0 objects), that's expected and will trigger fallback - don't warn
             if (latest.isPresent()) {
                 MigrationData last = latest.get();
                 long migrationSourceObjects = last.getSourceObjects() != null ? last.getSourceObjects() : 0L;
                 long migrationTargetObjects = last.getTargetObjects() != null ? last.getTargetObjects() : 0L;
                 logger.info("Comparison - bucket_data: source={}, target={} | migration_data: source={}, target={}", 
                     sourceObjects, targetObjects, migrationSourceObjects, migrationTargetObjects);
-                if (sourceObjects != migrationSourceObjects || targetObjects != migrationTargetObjects) {
+                
+                // Only warn if bucket_data has records but totals don't match
+                // If bucket_data is empty (both 0), that's expected - fallback will use migration_data
+                boolean hasBucketData = !latestBucketData.isEmpty();
+                boolean totalsMismatch = (sourceObjects != migrationSourceObjects || targetObjects != migrationTargetObjects);
+                
+                if (hasBucketData && totalsMismatch) {
+                    // Calculate difference to help diagnose
+                    long sourceDiff = migrationSourceObjects - sourceObjects;
+                    long targetDiff = migrationTargetObjects - targetObjects;
                     logger.warn("Mismatch detected! bucket_data and migration_data totals differ. " +
+                        "bucket_data: source={}, target={} | migration_data: source={}, target={} | " +
+                        "Difference: source={}, target={}. " +
                         "This may indicate: 1) Bucket filtering excluded some data, 2) Data gathering inconsistency, " +
-                        "3) Storage domain mismatch in bucket_data records.");
+                        "3) Storage domain mismatch in bucket_data records. " +
+                        "bucket_data has {} records for timestamp {}", 
+                        sourceObjects, targetObjects, migrationSourceObjects, migrationTargetObjects,
+                        sourceDiff, targetDiff, latestBucketData.size(), latestTimestamp);
+                } else if (!hasBucketData && (migrationSourceObjects > 0 || migrationTargetObjects > 0)) {
+                    // bucket_data is empty but migration_data has values - this is expected, will use fallback
+                    if (!allBucketData.isEmpty()) {
+                        logger.debug("No bucket_data records found for timestamp {} (but {} records exist for other timestamps). " +
+                            "migration_data has data. Will use migration_data fallback.", 
+                            latestTimestamp, allBucketData.size());
+                    } else {
+                        logger.debug("No bucket_data records found for phase '{}' at timestamp {}. " +
+                            "migration_data has data. Will use migration_data fallback.", 
+                            phaseId, latestTimestamp);
+                    }
                 }
             }
         }
@@ -321,48 +356,33 @@ public class ReportService {
             logger.info("Baseline and latest are same timestamp, using current values as baseline");
         }
         
-        // Fallback: if bucket_data calculation resulted in 0, use migration_data (backward compatibility)
+        // Warn if bucket_data calculation resulted in 0, but do not fallback to migration_data
         // This can happen if:
         // 1. No bucket_data exists
         // 2. bucket_data exists but doesn't match filters (storage_domain mismatch, etc.)
         // 3. Selected buckets filter excluded all data
         if ((sourceObjects == 0 && targetObjects == 0) && latest.isPresent()) {
-            logger.warn("Bucket data calculation resulted in 0 objects for phase '{}'. " +
-                "This might indicate: 1) No bucket_data exists, 2) Storage domain mismatch, 3) Bucket filter issue. " +
-                "Falling back to migration_data aggregate.", phaseId);
             MigrationData last = latest.get();
             long migrationSourceObjects = last.getSourceObjects() != null ? last.getSourceObjects() : 0L;
-            long migrationSourceSize = last.getSourceSize() != null ? last.getSourceSize() : 0L;
             long migrationTargetObjects = last.getTargetObjects() != null ? last.getTargetObjects() : 0L;
-            long migrationTargetSize = last.getTargetSize() != null ? last.getTargetSize() : 0L;
             
-            // Only use migration_data if it has actual values
             if (migrationSourceObjects > 0 || migrationTargetObjects > 0) {
-                logger.info("Using migration_data fallback: source={} objects, target={} objects", 
-                    migrationSourceObjects, migrationTargetObjects);
-                sourceObjects = migrationSourceObjects;
-                sourceSize = migrationSourceSize;
-                targetObjects = migrationTargetObjects;
-                targetSize = migrationTargetSize;
-                
-                if (reference.isPresent()) {
-                    MigrationData ref = reference.get();
-                    baselineSourceObjects = ref.getSourceObjects() != null ? ref.getSourceObjects() : 0L;
-                    baselineSourceSize = ref.getSourceSize() != null ? ref.getSourceSize() : 0L;
-                    baselineTargetObjects = ref.getTargetObjects() != null ? ref.getTargetObjects() : 0L;
-                    baselineTargetSize = ref.getTargetSize() != null ? ref.getTargetSize() : 0L;
-                }
+                logger.warn("Bucket data calculation resulted in 0 objects for phase '{}', but migration_data shows " +
+                    "source={}, target={}. This might indicate: 1) No bucket_data exists, 2) Storage domain mismatch, " +
+                    "3) Bucket filter issue. Using bucket_data values (0) instead of migration_data aggregate.", 
+                    phaseId, migrationSourceObjects, migrationTargetObjects);
             } else {
-                logger.warn("Migration_data also has 0 objects. No data available for phase '{}'.", phaseId);
+                logger.info("Bucket data calculation resulted in 0 objects for phase '{}'. " +
+                    "No bucket_data or migration_data available.", phaseId);
             }
         } else if (sourceObjects > 0 && targetObjects == 0 && latest.isPresent()) {
-            // Source has data but target is 0 - check if migration_data has target data
+            // Source has data but target is 0 - log diagnostic information
             MigrationData last = latest.get();
             long migrationTargetObjects = last.getTargetObjects() != null ? last.getTargetObjects() : 0L;
             if (migrationTargetObjects > 0) {
-                // Log diagnostic information about bucket_data records
                 logger.warn("Bucket data shows target=0 but migration_data shows target={}. " +
-                    "This might indicate a storage_domain mismatch. Phase target: '{}'. Using migration_data for target.", 
+                    "This might indicate a storage_domain mismatch. Phase target: '{}'. " +
+                    "Using bucket_data value (0) instead of migration_data.", 
                     migrationTargetObjects, phase.getTarget());
                 
                 // Log all bucket_data records for this phase to help diagnose
@@ -374,9 +394,6 @@ public class ReportService {
                             bd.getObjectCount(), bd.getSizeBytes());
                     }
                 }
-                
-                targetObjects = migrationTargetObjects;
-                targetSize = last.getTargetSize() != null ? last.getTargetSize() : 0L;
             }
         }
         

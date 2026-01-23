@@ -1,10 +1,11 @@
 package com.spectralogic.migrationtracker.config;
 
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 import javax.sql.DataSource;
 import java.nio.file.Paths;
@@ -17,8 +18,6 @@ public class DatabaseConfig {
 
     @Bean
     public DataSource dataSource() {
-        DriverManagerDataSource dataSource = new DriverManagerDataSource();
-        
         // Get database path - try multiple locations
         String dbPath = null;
         
@@ -53,10 +52,27 @@ public class DatabaseConfig {
         
         System.out.println("Database path: " + dbPath);
         
-        dataSource.setDriverClassName("org.sqlite.JDBC");
-        dataSource.setUrl("jdbc:sqlite:" + dbPath);
+        // Configure HikariCP connection pool for SQLite
+        HikariConfig config = new HikariConfig();
+        config.setDriverClassName("org.sqlite.JDBC");
+        config.setJdbcUrl("jdbc:sqlite:" + dbPath);
         
-        return dataSource;
+        // SQLite-specific connection pool settings
+        // SQLite works best with a small connection pool due to its file-based nature
+        config.setMaximumPoolSize(5);  // Small pool for SQLite
+        config.setMinimumIdle(1);      // Keep at least 1 connection ready
+        config.setConnectionTimeout(30000);  // 30 seconds
+        config.setIdleTimeout(600000);  // 10 minutes
+        config.setMaxLifetime(1800000); // 30 minutes
+        config.setLeakDetectionThreshold(60000); // Detect connection leaks
+        
+        // SQLite-specific optimizations
+        // Enable WAL mode for better concurrency (if supported)
+        config.addDataSourceProperty("journal_mode", "WAL");
+        // Set busy timeout to handle locked database gracefully
+        config.addDataSourceProperty("busy_timeout", "30000");
+        
+        return new HikariDataSource(config);
     }
 
     @Bean
