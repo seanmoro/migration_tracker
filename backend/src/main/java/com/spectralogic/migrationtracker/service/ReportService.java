@@ -727,11 +727,13 @@ public class ReportService {
             
             org.apache.pdfbox.pdmodel.PDPageContentStream contentStream = new org.apache.pdfbox.pdmodel.PDPageContentStream(document, page);
             
-            // In PDFBox 3.0, use Standard14Fonts with FontName enum
-            org.apache.pdfbox.pdmodel.font.Standard14Fonts.FontName fontNameBold = org.apache.pdfbox.pdmodel.font.Standard14Fonts.FontName.HELVETICA_BOLD;
-            org.apache.pdfbox.pdmodel.font.Standard14Fonts.FontName fontNameRegular = org.apache.pdfbox.pdmodel.font.Standard14Fonts.FontName.HELVETICA;
-            org.apache.pdfbox.pdmodel.font.PDType1Font boldFont = new org.apache.pdfbox.pdmodel.font.Standard14Fonts(fontNameBold);
-            org.apache.pdfbox.pdmodel.font.PDType1Font regularFont = new org.apache.pdfbox.pdmodel.font.Standard14Fonts(fontNameRegular);
+            // In PDFBox 3.0, use PDType1Font constructor with Standard14Fonts.FontName enum
+            org.apache.pdfbox.pdmodel.font.PDType1Font boldFont = new org.apache.pdfbox.pdmodel.font.PDType1Font(
+                org.apache.pdfbox.pdmodel.font.Standard14Fonts.FontName.HELVETICA_BOLD
+            );
+            org.apache.pdfbox.pdmodel.font.PDType1Font regularFont = new org.apache.pdfbox.pdmodel.font.PDType1Font(
+                org.apache.pdfbox.pdmodel.font.Standard14Fonts.FontName.HELVETICA
+            );
             
             contentStream.setFont(boldFont, 16);
             contentStream.beginText();
