@@ -357,12 +357,17 @@ public class ReportService {
         
         // Use baseline source for display (what we're migrating from)
         // Use current target for display (what we've migrated to)
-        progress.setSourceObjects(baselineSourceObjects > 0 ? baselineSourceObjects : sourceObjects);
-        progress.setSourceSize(baselineSourceSize > 0 ? baselineSourceSize : sourceSize);
+        long displaySourceObjects = baselineSourceObjects > 0 ? baselineSourceObjects : sourceObjects;
+        long displaySourceSize = baselineSourceSize > 0 ? baselineSourceSize : sourceSize;
+        progress.setSourceObjects(displaySourceObjects);
+        progress.setSourceSize(displaySourceSize);
         progress.setSourceTapeCount(sourceTapeCount);
         progress.setTargetObjects(targetObjects);
         progress.setTargetSize(targetSize);
         progress.setTargetTapeCount(targetTapeCount);
+        
+        logger.info("Final progress values for phase '{}': sourceObjects={} ({} bytes), targetObjects={} ({} bytes), sourceTapes={}, targetTapes={}", 
+            phaseId, displaySourceObjects, displaySourceSize, targetObjects, targetSize, sourceTapeCount, targetTapeCount);
         
         // Calculate progress using delta method:
         // Progress = (target_delta) / (objects_to_migrate) * 100
